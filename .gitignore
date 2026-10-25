@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build Artifacts & Binaries
+AIFatigueTracker.app
+main
+*.o
+*.dSYM/
+.build/
+.swiftpm/
+.build_tools/
+
+# Local Database & Logs
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.log
+
+# Sensitive or Local User Data
+Captures/
+*.png
+!assets/*.png
+
+# IDE & Editor Configs
+.vscode/

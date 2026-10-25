@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ko</string>
+    <key>CFBundleExecutable</key>
+    <string>AIFatigueTracker</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.dxdlab.AIFatigueTracker</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>AI 피로 기록</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>피로를 느끼는 순간의 작업 맥락을 기록하기 위해 화면 캡처 권한이 필요합니다.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>피로 설문의 주관식 문항을 음성으로 입력하기 위해 음성 인식 권한이 필요합니다.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>피로 설문의 주관식 응답을 음성으로 입력하기 위해 마이크 권한이 필요합니다.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>활성 브라우저의 웹페이지 방문 기록 및 AI 웹 도구 사용을 분석하기 위해 브라우저 제어 권한이 필요합니다.</string>
+</dict>
+</plist>
