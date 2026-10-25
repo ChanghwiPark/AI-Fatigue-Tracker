@@ -8,6 +8,7 @@ AIFatigueTracker.app
 main
 *.o
 *.dSYM/
+*.dmg
 .build/
 .swiftpm/
 .build_tools/
