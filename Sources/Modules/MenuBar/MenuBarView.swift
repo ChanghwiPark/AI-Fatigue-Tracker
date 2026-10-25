@@ -60,17 +60,19 @@ public struct MenuBarView: View {
                 appState.togglePauseRecording15Min()
             }
 
-            bottomActionRow(
-                title: "디버그 모니터…",
-                icon: "waveform.path.ecg"
-            ) {
-                dismiss()
-                MenuBarAccessHelper.closeMenuBarExtra()
-                DebugWindowManager.shared.showDebugWindow()
+            if Config.DebugConfig.showDebugMonitor || NSEvent.modifierFlags.contains(.option) {
+                bottomActionRow(
+                    title: "디버그 모니터",
+                    icon: "waveform.path.ecg"
+                ) {
+                    dismiss()
+                    MenuBarAccessHelper.closeMenuBarExtra()
+                    DebugWindowManager.shared.showDebugWindow()
+                }
             }
 
             bottomActionRow(
-                title: "설정…",
+                title: "설정",
                 icon: "gearshape"
             ) {
                 dismiss()

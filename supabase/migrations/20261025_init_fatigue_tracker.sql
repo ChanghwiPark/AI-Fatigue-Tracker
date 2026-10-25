@@ -53,7 +53,7 @@ COMMENT ON TABLE public.sessions IS 'AI 대화 세션 생명주기 및 순수 �
 CREATE TABLE IF NOT EXISTS public.activity_events (
     id UUID PRIMARY KEY,
     participant_id UUID NOT NULL REFERENCES public.participants(id) ON DELETE CASCADE,
-    session_id UUID REFERENCES public.sessions(id) ON DELETE SET NULL,
+    session_id UUID,
     event_type TEXT NOT NULL,
     occurred_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ,
@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS public.activity_events (
     browser TEXT
 );
 
+ALTER TABLE public.activity_events DROP CONSTRAINT IF EXISTS activity_events_session_id_fkey;
+
 -- 요구사항 인덱스: (participant_id, occurred_at), (session_id), (domain)
 CREATE INDEX IF NOT EXISTS idx_activity_events_participant_occurred ON public.activity_events(participant_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_activity_events_session_id ON public.activity_events(session_id);
@@ -82,7 +84,7 @@ COMMENT ON TABLE public.activity_events IS '모든 사용자 컴퓨터 활동 �
 CREATE TABLE IF NOT EXISTS public.survey_responses (
     id UUID PRIMARY KEY,
     participant_id UUID NOT NULL REFERENCES public.participants(id) ON DELETE CASCADE,
-    session_id UUID REFERENCES public.sessions(id) ON DELETE SET NULL,
+    session_id UUID,
     session_title TEXT,
     kind TEXT NOT NULL CHECK (kind IN ('start', 'mid', 'end', 'diary', 'nudge')),
     status TEXT NOT NULL CHECK (status IN ('answered', 'skipped', 'snoozed', 'timeout')),
@@ -138,6 +140,12 @@ TO anon
 USING (true)
 WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Anon can select participants" ON public.participants;
+CREATE POLICY "Anon can select participants"
+ON public.participants FOR SELECT
+TO anon
+USING (true);
+
 -- Sessions 정책
 DROP POLICY IF EXISTS "Anon can insert sessions" ON public.sessions;
 CREATE POLICY "Anon can insert sessions"
@@ -152,12 +160,24 @@ TO anon
 USING (true)
 WITH CHECK (true);
 
--- Activity Events 정책: anon은 INSERT 및 본인 항목 DELETE 가능, SELECT 불가
+DROP POLICY IF EXISTS "Anon can select sessions" ON public.sessions;
+CREATE POLICY "Anon can select sessions"
+ON public.sessions FOR SELECT
+TO anon
+USING (true);
+
+-- Activity Events 정책: anon은 INSERT, SELECT 및 본인 항목 DELETE 가능
 DROP POLICY IF EXISTS "Anon can insert activity events" ON public.activity_events;
 CREATE POLICY "Anon can insert activity events"
 ON public.activity_events FOR INSERT
 TO anon
 WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Anon can select activity events" ON public.activity_events;
+CREATE POLICY "Anon can select activity events"
+ON public.activity_events FOR SELECT
+TO anon
+USING (true);
 
 DROP POLICY IF EXISTS "Anon can delete activity events" ON public.activity_events;
 CREATE POLICY "Anon can delete activity events"
@@ -165,12 +185,18 @@ ON public.activity_events FOR DELETE
 TO anon
 USING (true);
 
--- Survey Responses 정책: anon은 INSERT만 가능, SELECT 불가
+-- Survey Responses 정책: anon은 INSERT 및 SELECT 가능
 DROP POLICY IF EXISTS "Anon can insert survey responses" ON public.survey_responses;
 CREATE POLICY "Anon can insert survey responses"
 ON public.survey_responses FOR INSERT
 TO anon
 WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Anon can select survey responses" ON public.survey_responses;
+CREATE POLICY "Anon can select survey responses"
+ON public.survey_responses FOR SELECT
+TO anon
+USING (true);
 
 -- 연구팀(service_role)은 RLS를 바이패스하지만 명시적 편의 정책 부여
 -- (Supabase의 service_role은 기본적으로 RLS 바이패스 권한이 있습니다)

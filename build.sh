@@ -25,7 +25,24 @@ cat << EOF > "$BUILD_TOOLS_DIR/vfs.yaml"
 }
 EOF
 
-echo "🔨 Building $APP_NAME..."
+RELEASE_MODE=false
+EXTRA_SWIFT_FLAGS=""
+
+for arg in "$@"; do
+  case $arg in
+    --release)
+      RELEASE_MODE=true
+      ;;
+  esac
+done
+
+if [ "$RELEASE_MODE" = true ]; then
+  echo "🚀 Building $APP_NAME for RELEASE (참여자 배포용: 디버그 모니터 자동 비활성화)..."
+  EXTRA_SWIFT_FLAGS="-D RELEASE_BUILD"
+else
+  echo "🔨 Building $APP_NAME for DEVELOPMENT/PILOT (파일럿/개발용: 디버그 모니터 포함)..."
+  EXTRA_SWIFT_FLAGS="-D DEBUG_BUILD"
+fi
 
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
@@ -42,6 +59,7 @@ swiftc \
     -parse-as-library \
     -target arm64-apple-macos14.0 \
     -O \
+    $EXTRA_SWIFT_FLAGS \
     $SWIFT_FILES \
     -o "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 

@@ -109,10 +109,11 @@ public final class SupabaseSyncManager: ObservableObject {
             return
         }
 
-        let pendingItems = LocalDatabase.shared.fetchPendingQueue(limit: 100)
+        let batchLimit = 200
+        let pendingItems = LocalDatabase.shared.fetchPendingQueue(limit: batchLimit)
         guard !pendingItems.isEmpty else { return }
 
-        print("[SupabaseSync] 큐 동기화 시도: \(pendingItems.count)건 전송 시작")
+        print("[SupabaseSync] 큐 동기화 시도: \(pendingItems.count)건 전송 시작 (총 대기: \(count)건)")
 
         // 테이블별로 그룹화
         var grouped: [String: [LocalDatabase.QueueItem]] = [:]
@@ -120,8 +121,22 @@ public final class SupabaseSyncManager: ObservableObject {
             grouped[item.tableName, default: []].append(item)
         }
 
-        for (table, items) in grouped {
+        // 외래 키 종속성을 고려하여 순서대로 전송: participants -> sessions -> activity_events -> survey_responses
+        let priorityOrder = ["participants", "sessions", "activity_events", "survey_responses", "activity_events_delete"]
+        for table in priorityOrder {
+            if let items = grouped[table], !items.isEmpty {
+                syncBatch(for: table, items: items, baseURL: baseURL, anonKey: anonKey)
+            }
+        }
+        for (table, items) in grouped where !priorityOrder.contains(table) {
             syncBatch(for: table, items: items, baseURL: baseURL, anonKey: anonKey)
+        }
+
+        // 대기 항목이 더 남아있으면 다음 배치를 즉시 연속 실행하여 큐를 고속으로 비움
+        if pendingItems.count >= batchLimit {
+            syncQueue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.syncPendingQueue()
+            }
         }
     }
 
@@ -173,14 +188,42 @@ public final class SupabaseSyncManager: ObservableObject {
             request.setValue("resolution=merge-duplicates, return=minimal", forHTTPHeaderField: "Prefer")
         }
 
-        // JSON 배열로 묶음(Batch) 생성
-        let jsonArrayString = "[" + items.map { $0.payloadJson }.joined(separator: ",") + "]"
-        request.httpBody = jsonArrayString.data(using: .utf8)
+        // PostgREST bulk insert(PGRST102) 제약 해결: 배열 내 모든 객체의 키가 완전히 일치하도록 union & null 정규화
+        var jsonDicts: [[String: Any]] = []
+        for item in items {
+            if let d = item.payloadJson.data(using: .utf8),
+               let dict = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                jsonDicts.append(dict)
+            }
+        }
+
+        var allKeys = Set<String>()
+        for dict in jsonDicts {
+            allKeys.formUnion(dict.keys)
+        }
+
+        var normalizedList: [[String: Any]] = []
+        for dict in jsonDicts {
+            var copy = dict
+            for k in allKeys {
+                if copy[k] == nil {
+                    copy[k] = NSNull()
+                }
+            }
+            normalizedList.append(copy)
+        }
+
+        if let normalizedData = try? JSONSerialization.data(withJSONObject: normalizedList) {
+            request.httpBody = normalizedData
+        } else {
+            let jsonArrayString = "[" + items.map { $0.payloadJson }.joined(separator: ",") + "]"
+            request.httpBody = jsonArrayString.data(using: .utf8)
+        }
 
         let ids = items.map { $0.id }
 
         let semaphore = DispatchSemaphore(value: 0)
-        let task = URLSession.shared.dataTask(with: request) { _, response, error in
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
             defer { semaphore.signal() }
 
             if let error = error {
@@ -198,7 +241,8 @@ public final class SupabaseSyncManager: ObservableObject {
                         self.pendingQueueCount = LocalDatabase.shared.getPendingQueueCount()
                     }
                 } else {
-                    print("[SupabaseSync] ⚠️ \(table) 전송 응답 코드: \(http.statusCode)")
+                    let errMsg = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                    print("[SupabaseSync] ⚠️ \(table) 전송 응답 코드: \(http.statusCode) (\(errMsg))")
                     LocalDatabase.shared.incrementRetryCount(ids: ids)
                 }
             }

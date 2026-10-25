@@ -387,13 +387,27 @@ public enum Config {
 
     // MARK: - 백엔드 (Supabase) 연동 설정
     public enum SupabaseConfig {
-        /// Supabase 프로젝트 URL (추후 환경변수 또는 실제 값 주입)
-        public static let projectURL: String = "https://your-project-id.supabase.co"
+        /// Supabase 프로젝트 URL
+        public static let projectURL: String = "https://frnggrpcqvtyeofckdel.supabase.co"
         /// Supabase Anon 공개 키
-        public static let anonKey: String = "your-anon-key"
+        public static let anonKey: String = "sb_publishable_FWlVyxKrrrsl76gAirdpjQ_h1F-Y-Cu"
         /// 스크린샷 저장용 Storage 버킷 명 (비공개, 업로드 전용)
         public static let screenshotBucket: String = "captures"
         /// 로컬 오프라인 큐 동기화 시도 주기 (초 단위: 60초)
         public static let syncInterval: TimeInterval = 60.0
+    }
+
+    // MARK: - 개발자 및 디버그 모드 설정
+    public enum DebugConfig {
+        #if RELEASE_BUILD
+        /// 릴리즈 배포 빌드(./build.sh --release): 디버그 모니터 메뉴가 기본 제외됩니다.
+        /// (Option(⌥) 키를 누른 채 메뉴를 열면 연구자 히든 메뉴로 열람 가능)
+        public static var showDebugMonitor: Bool = false
+        public static let isReleaseBuild: Bool = true
+        #else
+        /// 일반 파일럿/개발 빌드(./build.sh): 디버그 모니터가 메뉴바에 항상 기본 표시됩니다.
+        public static var showDebugMonitor: Bool = true
+        public static let isReleaseBuild: Bool = false
+        #endif
     }
 }

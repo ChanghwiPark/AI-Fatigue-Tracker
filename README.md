@@ -48,21 +48,27 @@
 - Swift 5.9+
 
 ### 컴파일 및 번들링
-프로젝트 루트에서 포함된 빌드 스크립트를 실행합니다:
+프로젝트 루트에서 빌드 스크립트를 실행합니다:
 
 ```bash
 chmod +x build.sh
+
+# 1) 평소 개발 및 파일럿용 빌드 (디버그 모니터 메뉴 포함)
 ./build.sh
+
+# 2) 실제 연구 참여자 배포용 빌드 (디버그 모니터 메뉴 자동 숨김)
+./build.sh --release
 ```
 
-빌드가 완료되면 루트 디렉토리에 `AIFatigueTracker.app`이 생성됩니다.
+- 빌드가 완료되면 루트 디렉토리에 `AIFatigueTracker.app`이 생성됩니다.
+- `--release`로 빌드한 앱에서도 연구자가 확인할 때는 **키보드의 `Option(⌥)` 키를 누른 채 메뉴바를 클릭**하면 디버그 모니터가 나타납니다.
 
 ### 실행 방법
 ```bash
 # 일반 실행
 open AIFatigueTracker.app
 
-# 디버그 모니터 팝업 탭을 바로 띄우며 실행
+# 디버그 모니터 설문 탭을 바로 띄우며 실행
 open AIFatigueTracker.app --args --survey-tab
 ```
 
