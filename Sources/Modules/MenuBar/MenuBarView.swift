@@ -341,15 +341,18 @@ public struct MenuBarView: View {
             // 참여 인원 안내: Supabase 활성 참여자 수가 성공적으로 조회된 경우에만 노출 (실패 시 완전히 숨김)
             if let activeCount = syncManager.activeParticipantsCount, activeCount > 0 {
                 HStack(spacing: 6) {
-                    HStack(spacing: -5) {
-                        Circle().fill(Color(hex: Config.Colors.accentHex)).frame(width: 16, height: 16)
-                        Circle().fill(Color(hex: Config.Colors.sageHex)).frame(width: 16, height: 16)
-                        Circle().fill(Color(hex: "#E8B04A")).frame(width: 16, height: 16)
-                        Circle().fill(Color(hex: "#3B82C4")).frame(width: 16, height: 16)
+                    // 실시간 연결 라이브 상태 닷 (초록색 펄스 점)
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#34C759").opacity(0.25))
+                            .frame(width: 12, height: 12)
+                        Circle()
+                            .fill(Color(hex: "#34C759"))
+                            .frame(width: 6, height: 6)
                     }
 
-                    Text("약 \(activeCount)명의 지식노동자가 함께 참여 중")
-                        .font(.system(size: 11))
+                    Text("\(activeCount)명의 지식노동자가 함께 참여 중")
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Config.Colors.mute)
                 }
                 .padding(.top, 2)
