@@ -351,7 +351,7 @@ public struct MenuBarView: View {
                             .frame(width: 6, height: 6)
                     }
 
-                    Text("\(activeCount)명의 지식노동자가 함께 참여 중")
+                    Text("\(activeCount)명이 함께 참여하고 있어요")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Config.Colors.mute)
                 }
