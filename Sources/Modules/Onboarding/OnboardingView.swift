@@ -83,24 +83,34 @@ public struct OnboardingView: View {
         }
     }
 
+    private var appIconImage: NSImage? {
+        if let image = Bundle.main.image(forResource: "AppIcon") {
+            return image
+        }
+        if let icon = NSApp.applicationIconImage {
+            return icon
+        }
+        return NSImage(named: "AppIcon")
+    }
+
     // MARK: - 헤더
     private var headerView: some View {
         HStack(spacing: 14) {
-            if let icon = NSApp.applicationIconImage {
+            if let icon = appIconImage {
                 Image(nsImage: icon)
                     .resizable()
-                    .frame(width: 42, height: 42)
-                    .cornerRadius(9)
-                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 52, height: 52)
+                    .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
             } else {
                 ZStack {
-                    Circle()
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(Config.Colors.line, lineWidth: 1.5)
-                        .frame(width: 42, height: 42)
-                        .background(Circle().fill(Config.Colors.cardBackground))
+                        .frame(width: 52, height: 52)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Config.Colors.cardBackground))
 
-                    Image(systemName: "waveform.path")
-                        .font(.system(size: 18, weight: .semibold))
+                    Image(systemName: "battery.25")
+                        .font(.system(size: 22, weight: .semibold))
                         .foregroundColor(Color(hex: Config.Colors.accentHex))
                 }
             }

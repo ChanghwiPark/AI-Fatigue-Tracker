@@ -195,34 +195,55 @@ public struct MenuBarView: View {
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.green.opacity(0.25), lineWidth: 0.8))
     }
 
+    private var appBrandIcon: NSImage? {
+        if let image = Bundle.main.image(forResource: "AppIcon") {
+            return image
+        }
+        if let icon = NSApp.applicationIconImage {
+            return icon
+        }
+        return NSImage(named: "AppIcon")
+    }
+
     // MARK: - 1. 맨 위 상태 줄
     private var statusHeaderView: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            if let apps = appState.activeSessionAppNames, let duration = appState.activeSessionDurationString {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(Color(hex: Config.Colors.accentHex))
-                        .frame(width: 7, height: 7)
-                    Text("기록 중 · \(apps)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Config.Colors.ink)
-                }
-                Text("현재 세션 \(duration)")
-                    .font(.system(size: 11.5))
-                    .foregroundColor(Config.Colors.mute)
-            } else {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(Color.gray.opacity(0.6))
-                        .frame(width: 7, height: 7)
-                    Text("대기 중 · AI 도구 감지 중")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Config.Colors.ink)
-                }
-                Text("Claude, ChatGPT, 터미널 등을 열면 자동 감지됩니다.")
-                    .font(.system(size: 11))
-                    .foregroundColor(Config.Colors.mute)
+        HStack(spacing: 10) {
+            if let icon = appBrandIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 34, height: 34)
+                    .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1.5)
             }
+
+            VStack(alignment: .leading, spacing: 3) {
+                if let apps = appState.activeSessionAppNames, let duration = appState.activeSessionDurationString {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color(hex: Config.Colors.accentHex))
+                            .frame(width: 7, height: 7)
+                        Text("기록 중 · \(apps)")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Config.Colors.ink)
+                    }
+                    Text("현재 세션 \(duration)")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(Config.Colors.mute)
+                } else {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color.gray.opacity(0.6))
+                            .frame(width: 7, height: 7)
+                        Text("대기 중 · AI 도구 감지 중")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Config.Colors.ink)
+                    }
+                    Text("Claude, ChatGPT, 터미널 등을 열면 자동 감지됩니다.")
+                        .font(.system(size: 11))
+                        .foregroundColor(Config.Colors.mute)
+                }
+            }
+            Spacer()
         }
     }
 

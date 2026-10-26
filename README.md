@@ -191,7 +191,7 @@ spctl -a -v --type open --context context:primary-signature AIFatigueTracker-Ins
 3. 응용 프로그램 폴더로 이동하여 **AIFatigueTracker**를 실행합니다.
 
 #### 2. 첫 실행 및 필수 시스템 권한 설정
-앱을 실행하면 메뉴 막대(화면 상단 시계 옆)에 뇌 모양(또는 파형) 아이콘이 생기며 안내 창이 열립니다.  
+앱을 실행하면 메뉴 막대(화면 상단 시계 옆)에 주황색 프롬프트 말풍선과 배터리 모양 아이콘이 생기며 안내 창이 열립니다.  
 AI 도구 사용을 감지하고 피로 기록을 남기기 위해 다음 권한 허용이 필요합니다.
 
 1. **손쉬운 사용 (Accessibility)**:

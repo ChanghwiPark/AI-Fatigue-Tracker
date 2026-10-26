@@ -159,6 +159,30 @@ public struct SettingsView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.green.opacity(0.25), lineWidth: 0.8))
                 }
 
+                // 앱 대표 로고 및 연구 개요 카드
+                HStack(spacing: 14) {
+                    if let icon = Bundle.main.image(forResource: "AppIcon") ?? NSApp.applicationIconImage ?? NSImage(named: "AppIcon") {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 44, height: 44)
+                            .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("AI Fatigue Tracker")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(Config.Colors.ink)
+                        Text("인간-AI 상호작용 및 피로도 경험표집 연구 시스템")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(Config.Colors.mute)
+                    }
+                    Spacer()
+                }
+                .padding(12)
+                .background(Config.Colors.cardBackground)
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Config.Colors.line, lineWidth: 1))
+
                 // 1. 참여자 이름 및 식별자 카드
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 7) {
