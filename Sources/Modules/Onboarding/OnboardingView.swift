@@ -86,15 +86,23 @@ public struct OnboardingView: View {
     // MARK: - 헤더
     private var headerView: some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .stroke(Config.Colors.line, lineWidth: 2)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Config.Colors.cardBackground))
+            if let icon = NSApp.applicationIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 42, height: 42)
+                    .cornerRadius(9)
+                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+            } else {
+                ZStack {
+                    Circle()
+                        .stroke(Config.Colors.line, lineWidth: 1.5)
+                        .frame(width: 42, height: 42)
+                        .background(Circle().fill(Config.Colors.cardBackground))
 
-                Circle()
-                    .fill(Color(hex: Config.Colors.accentHex))
-                    .frame(width: 18, height: 18)
+                    Image(systemName: "waveform.path")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Color(hex: Config.Colors.accentHex))
+                }
             }
 
             VStack(alignment: .leading, spacing: 3) {
