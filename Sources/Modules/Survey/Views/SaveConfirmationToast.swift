@@ -17,8 +17,8 @@ public final class SaveConfirmationToast {
             guard let screen = NSScreen.screens.first ?? NSScreen.main else { return }
             let visibleFrame = screen.visibleFrame
 
-            let toastWidth: CGFloat = 280.0
-            let toastHeight: CGFloat = 64.0
+            let toastWidth: CGFloat = 290.0
+            let toastHeight: CGFloat = 68.0
             let rightMargin: CGFloat = 14.0
             let topMargin: CGFloat = 12.0
 
@@ -27,7 +27,10 @@ public final class SaveConfirmationToast {
 
             let panel = NSPanel(
                 contentRect: NSRect(x: x, y: y, width: toastWidth, height: toastHeight),
-                styleMask: [.nonactivatingPanel, .fullSizeContentView],
+                styleMask: [
+                    .nonactivatingPanel,
+                    .borderless
+                ],
                 backing: .buffered,
                 defer: false
             )
@@ -35,8 +38,8 @@ public final class SaveConfirmationToast {
             panel.level = .statusBar
             panel.backgroundColor = .clear
             panel.isOpaque = false
-            panel.hasShadow = true
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.hasShadow = false
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 
             let toastView = ToastContentView(title: message, detail: detail)
             panel.contentView = NSHostingView(rootView: toastView)
@@ -100,12 +103,12 @@ private struct ToastContentView: View {
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Config.Colors.popupBg)
-                .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 4)
+                .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 3)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Config.Colors.line, lineWidth: 1.0)
+                .stroke(Config.Colors.line.opacity(0.6), lineWidth: 0.8)
         )
-        .padding(4)
+        .padding(6)
     }
 }
