@@ -37,6 +37,9 @@ public final class LocalDatabase {
         if sqlite3_open(dbPath, &db) != SQLITE_OK {
             print("[LocalDB] SQLite 열기 실패: \(String(cString: sqlite3_errmsg(db)))")
         } else {
+            // 동시 쓰기 잠금 방지를 위한 busy_timeout(5초) 설정
+            sqlite3_busy_timeout(db, 5000)
+            executeRaw("PRAGMA busy_timeout = 5000;")
             // WAL(Write-Ahead Logging) 모드 활성화로 동시성 및 내구성 강화
             executeRaw("PRAGMA journal_mode = WAL;")
             executeRaw("PRAGMA synchronous = NORMAL;")
