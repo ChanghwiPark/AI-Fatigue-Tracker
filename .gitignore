@@ -23,6 +23,7 @@ main
 Captures/
 *.png
 !assets/*.png
+!Sources/Resources/*.png
 
 # IDE & Editor Configs
 .vscode/

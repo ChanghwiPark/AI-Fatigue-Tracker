@@ -50,6 +50,11 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 # Copy Info.plist
 cp "$PROJECT_DIR/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 
+# Copy App Icon & Resources
+if [ -d "$PROJECT_DIR/Sources/Resources" ]; then
+  cp -R "$PROJECT_DIR/Sources/Resources/"* "$APP_BUNDLE/Contents/Resources/"
+fi
+
 # Collect all Swift source files
 SWIFT_FILES=$(find "$PROJECT_DIR/Sources" -name "*.swift")
 
