@@ -9,6 +9,9 @@ public struct MenuBarView: View {
     @ObservedObject var sessionManager: SessionManager = .shared
     @ObservedObject var surveyLogStore: SurveyLogStore = .shared
 
+    @State private var currentTime = Date()
+    private let countdownTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+
     public init() {}
 
     public var body: some View {
@@ -48,14 +51,16 @@ public struct MenuBarView: View {
             // 4. 하단 메뉴 옵션
             bottomActionRow(
                 title: mutePopup1HourMenuTitle,
-                icon: appState.isPopupMutedForOneHour ? "bell.fill" : "bell.slash"
+                icon: appState.isPopupMutedForOneHour ? "bell.fill" : "bell.slash",
+                isHighlighted: appState.isPopupMutedForOneHour
             ) {
                 appState.toggleMuteOneHour()
             }
 
             bottomActionRow(
                 title: pauseRecordingMenuTitle,
-                icon: appState.isRecordingPaused15Min ? "play.circle.fill" : "pause.circle"
+                icon: appState.isRecordingPaused15Min ? "play.circle.fill" : "pause.circle",
+                isHighlighted: appState.isRecordingPaused15Min
             ) {
                 appState.togglePauseRecording15Min()
             }
@@ -91,9 +96,15 @@ public struct MenuBarView: View {
         }
         .frame(width: 320)
         .background(Config.Colors.popupBg)
+        .onReceive(countdownTimer) { _ in
+            if appState.isPopupMutedForOneHour || appState.isRecordingPaused15Min {
+                currentTime = Date()
+            }
+        }
     }
 
     private var mutePopup1HourMenuTitle: String {
+        _ = currentTime
         if appState.isPopupMutedForOneHour, let end = appState.popupMuteEndTime {
             let remain = max(0, Int(end.timeIntervalSinceNow))
             let min = remain / 60
@@ -107,6 +118,7 @@ public struct MenuBarView: View {
     }
 
     private var pauseRecordingMenuTitle: String {
+        _ = currentTime
         if appState.isRecordingPaused15Min, let end = appState.recordingPauseEndTime {
             let remain = max(0, Int(end.timeIntervalSinceNow))
             let min = remain / 60
@@ -382,22 +394,32 @@ public struct MenuBarView: View {
     }
 
     // MARK: - 하단 메뉴 항목
-    private func bottomActionRow(title: String, icon: String, action: @escaping () -> Void) -> some View {
+    private func bottomActionRow(
+        title: String,
+        icon: String,
+        isHighlighted: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 12))
+                    .font(.system(size: 12, weight: isHighlighted ? .semibold : .regular))
                     .frame(width: 16)
-                    .foregroundColor(Config.Colors.ink)
+                    .foregroundColor(isHighlighted ? Color(hex: Config.Colors.accentHex) : Config.Colors.ink)
 
                 Text(title)
-                    .font(.system(size: 12.5))
-                    .foregroundColor(Config.Colors.ink)
+                    .font(.system(size: 12.5, weight: isHighlighted ? .semibold : .regular))
+                    .foregroundColor(isHighlighted ? Color(hex: Config.Colors.accentHex) : Config.Colors.ink)
 
                 Spacer()
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .background(
+                isHighlighted
+                    ? RoundedRectangle(cornerRadius: 6).fill(Color(hex: Config.Colors.accentSoftHex).opacity(0.55))
+                    : nil
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
