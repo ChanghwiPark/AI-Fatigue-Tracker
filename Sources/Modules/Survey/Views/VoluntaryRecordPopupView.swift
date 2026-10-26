@@ -7,7 +7,7 @@ import AppKit
 /// - [공통 척도] 피로 척도 (0~10, 주황색), 유용성 척도 (1~5, 초록색)
 /// - [피로 6점 이상] 붉은 배경(#FBE6DD, #F2C4B2)
 ///   1) "어떤 점이 피곤하게 느껴졌나요? (복수 선택)" (6대 카테고리)
-///   2) "어떻게 하면 덜 피곤할까요? (선택)" 주관식 + "AI가…", "내가…" 문장 시작 버튼
+///   2) "어떻게 하면 덜 피곤할까요? (선택)" -> 'AI가 어떻게 하면 덜 피곤할까요?', '내가 어떻게 하면 덜 피곤할까요?' 2개 질문 분리 및 확장 입력창
 /// - [하단 액션] "취소" 및 "저장" 버튼
 public struct VoluntaryRecordPopupView: View {
     @State public var context: VoluntaryCaptureContext
@@ -19,9 +19,11 @@ public struct VoluntaryRecordPopupView: View {
     public let onSave: (VoluntaryCaptureContext, [String: String]) -> Void
 
     @StateObject private var formState: SurveyFormState = SurveyFormState()
-    @State private var howToReduceText: String = ""
+    @State private var howToReduceAIText: String = ""
+    @State private var howToReduceSelfText: String = ""
     @State private var innerContentHeight: CGFloat = 360.0
-    @FocusState private var isHowToReduceFocused: Bool
+    @FocusState private var isHowToReduceAIFocused: Bool
+    @FocusState private var isHowToReduceSelfFocused: Bool
     @ObservedObject private var speechManager = SpeechInputManager.shared
 
     private let cardWidth: CGFloat = Config.Survey.popupDefaultWidth // 372px
@@ -47,7 +49,8 @@ public struct VoluntaryRecordPopupView: View {
         let state = SurveyFormState(fatigueScore: initF, usefulnessScore: nil)
         if initF != nil {
             state.selectedFatigueCategories = ["overload", "physicalTired"]
-            self._howToReduceText = State(initialValue: "AI가 핵심만 먼저 요약해주면 좋겠어요.")
+            self._howToReduceAIText = State(initialValue: "핵심만 먼저 요약해주면 좋겠어요.")
+            self._howToReduceSelfText = State(initialValue: "작업 단위를 쪼개서 질문해야겠어요.")
         }
         self._formState = StateObject(wrappedValue: state)
     }
@@ -459,106 +462,121 @@ public struct VoluntaryRecordPopupView: View {
         }
     }
 
-    // "어떻게 하면 덜 피곤할까요? (선택)" + "AI가…", "내가…" 문장 시작 버튼
+    // MARK: - 어떻게 하면 덜 피곤할까요? (AI 관점 / 내 관점 2가지 질문으로 분리)
     private var howToReduceFatigueSection: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("어떻게 하면 덜 피곤할까요? (선택)")
-                .font(.system(size: 12.5, weight: .bold))
-                .foregroundColor(Config.Colors.highFatigueTitle)
+        VStack(alignment: .leading, spacing: 14) {
+            // 섹션 메인 타이틀
+            HStack(spacing: 6) {
+                Image(systemName: "questionmark.bubble.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: Config.Colors.accentHex))
+                Text("어떻게 하면 덜 피곤할까요?")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Config.Colors.highFatigueTitle)
+            }
+            .padding(.top, 2)
 
-            // 주관식 칸 + 마이크 버튼
+            // 질문 1. AI가 어떻게 하면 덜 피곤할까요? (선택)
+            howToReduceQuestionBox(
+                title: "AI가 어떻게 하면 덜 피곤할까요?",
+                icon: "sparkles",
+                placeholder: "AI가 개선해줬으면 하는 점이나 바라는 답변 방식을 적어주세요.\n(예: 핵심만 간결하게 요약하기, 불필요한 코드 장황하게 늘어놓지 않기 등)",
+                text: $howToReduceAIText,
+                isFocused: $isHowToReduceAIFocused,
+                fieldKey: "how_to_reduce_ai"
+            )
+
+            // 질문 2. 내가 어떻게 하면 덜 피곤할까요? (선택)
+            howToReduceQuestionBox(
+                title: "내가 어떻게 하면 덜 피곤할까요?",
+                icon: "person.fill",
+                placeholder: "내가 작업 방식이나 프롬프트를 바꿀 수 있는 점을 적어주세요.\n(예: 요구사항을 더 구체적으로 지시하기, 단계별로 끊어서 질문하기 등)",
+                text: $howToReduceSelfText,
+                isFocused: $isHowToReduceSelfFocused,
+                fieldKey: "how_to_reduce_self"
+            )
+        }
+    }
+
+    private func howToReduceQuestionBox(
+        title: String,
+        icon: String,
+        placeholder: String,
+        text: Binding<String>,
+        isFocused: FocusState<Bool>.Binding,
+        fieldKey: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(Color(hex: Config.Colors.accentHex))
+
+                Text(title)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(Config.Colors.highFatigueTitle)
+
+                Text("(선택)")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(Config.Colors.mute)
+
+                Spacer()
+            }
+
+            // 큰 텍스트 입력창 (세로로 넉넉한 공간 제공: minHeight 56pt)
             HStack(alignment: .top, spacing: 6) {
-                TextField("생각나는 해결책이나 바람을 적어주세요.", text: $howToReduceText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundColor(Config.Colors.highFatigueInk)
-                    .lineLimit(1...5)
-                    .padding(.vertical, 3)
-                    .focused($isHowToReduceFocused)
+                ZStack(alignment: .topLeading) {
+                    if text.wrappedValue.isEmpty {
+                        Text(placeholder)
+                            .font(.system(size: 11.5))
+                            .foregroundColor(Config.Colors.mute.opacity(0.8))
+                            .lineSpacing(3)
+                            .padding(.top, 2)
+                            .allowsHitTesting(false)
+                    }
+
+                    TextField("", text: text, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundColor(Config.Colors.highFatigueInk)
+                        .lineLimit(3...8)
+                        .padding(.vertical, 2)
+                        .focused(isFocused)
+                }
+                .frame(minHeight: 56, alignment: .topLeading)
 
                 // 선 마이크 버튼
                 Button(action: {
                     speechManager.toggleRecording(
-                        fieldKey: "how_to_reduce",
-                        currentText: howToReduceText
+                        fieldKey: fieldKey,
+                        currentText: text.wrappedValue
                     ) { updated in
-                        howToReduceText = updated
+                        text.wrappedValue = updated
                     }
                 }) {
                     ZStack {
                         Circle()
-                            .fill(speechManager.isRecording && speechManager.activeFieldKey == "how_to_reduce" ? Color(hex: Config.Colors.accentHex) : Color.clear)
+                            .fill(speechManager.isRecording && speechManager.activeFieldKey == fieldKey ? Color(hex: Config.Colors.accentHex) : Color.clear)
                             .frame(width: 24, height: 24)
-                        Image(systemName: speechManager.isRecording && speechManager.activeFieldKey == "how_to_reduce" ? "mic.fill" : "mic")
+                        Image(systemName: speechManager.isRecording && speechManager.activeFieldKey == fieldKey ? "mic.fill" : "mic")
                             .font(.system(size: 11.5, weight: .medium))
-                            .foregroundColor(speechManager.isRecording && speechManager.activeFieldKey == "how_to_reduce" ? .white : Config.Colors.mute)
+                            .foregroundColor(speechManager.isRecording && speechManager.activeFieldKey == fieldKey ? .white : Config.Colors.mute)
                     }
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 1)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 7)
                     .fill(Config.Colors.highFatigueCardBg)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Config.Colors.highFatigueBorder, lineWidth: 0.8)
-                    )
-            )
-
-            // 문장 시작 버튼: "AI가…", "내가…" (누르면 그 말로 칸이 시작되고 커서가 끝에 놓임)
-            HStack(spacing: 6) {
-                sentenceStarterButton(prefix: "AI가")
-                sentenceStarterButton(prefix: "내가")
-                Spacer()
-            }
-        }
-    }
-
-    private func sentenceStarterButton(prefix: String) -> some View {
-        let labelText = "\(prefix)…"
-        return Button(action: {
-            insertSentenceStarter(prefix)
-        }) {
-            HStack(spacing: 3) {
-                Text("+")
-                    .font(.system(size: 10, weight: .bold))
-                Text(labelText)
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .foregroundColor(Color(hex: Config.Colors.accentHex))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Config.Colors.highFatigueCardBg)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
+                        RoundedRectangle(cornerRadius: 7)
                             .stroke(Config.Colors.highFatigueBorder, lineWidth: 0.8)
                     )
             )
         }
-        .buttonStyle(.plain)
-    }
-
-    private func insertSentenceStarter(_ prefix: String) {
-        var trimmed = howToReduceText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // 끝에 이미 마침표나 쉼표가 있다면 정리
-        while trimmed.hasSuffix(".") || trimmed.hasSuffix(",") {
-            trimmed = String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        if trimmed.isEmpty {
-            howToReduceText = "\(prefix) "
-        } else {
-            howToReduceText = "\(trimmed), \(prefix) "
-        }
-
-        // 커서 이동을 위해 포커스 부여
-        isHowToReduceFocused = true
     }
 
     // MARK: - 4. 하단 액션 버튼 바 (취소, 저장)
@@ -626,15 +644,26 @@ public struct VoluntaryRecordPopupView: View {
             payload["session_title"] = sTitle
         }
 
-        // 어떻게 하면 덜 피곤할까요? 답변
-        let trimmedReduce = howToReduceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedReduce.isEmpty {
-            payload["how_to_reduce_fatigue"] = trimmedReduce
-            if trimmedReduce.hasPrefix("AI가") {
-                payload["reduction_starter"] = "AI"
-            } else if trimmedReduce.hasPrefix("내가") {
-                payload["reduction_starter"] = "self"
-            }
+        // 어떻게 하면 덜 피곤할까요? 답변 (AI 관점 / 내 관점 2가지 질문 분리 및 통합)
+        let trimmedAI = howToReduceAIText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSelf = howToReduceSelfText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !trimmedAI.isEmpty {
+            payload["how_to_reduce_ai"] = trimmedAI
+        }
+        if !trimmedSelf.isEmpty {
+            payload["how_to_reduce_self"] = trimmedSelf
+        }
+
+        var combinedParts: [String] = []
+        if !trimmedAI.isEmpty {
+            combinedParts.append("[AI] \(trimmedAI)")
+        }
+        if !trimmedSelf.isEmpty {
+            combinedParts.append("[나] \(trimmedSelf)")
+        }
+        if !combinedParts.isEmpty {
+            payload["how_to_reduce_fatigue"] = combinedParts.joined(separator: "\n")
         }
 
         onSave(context, payload)
