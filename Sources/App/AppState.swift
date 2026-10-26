@@ -135,6 +135,9 @@ public final class AppState: ObservableObject {
         // 온보딩 창 닫기
         onboardingWindowController?.close()
         onboardingWindowController = nil
+
+        // 사용자가 앱 상주 위치(상단 메뉴 막대)를 즉시 인지할 수 있도록 패널 자동 열기
+        MenuBarAccessHelper.openMenuBarExtra(delay: 0.3)
     }
 
     // MARK: - 팝업 1시간 음소거 토글 및 로깅

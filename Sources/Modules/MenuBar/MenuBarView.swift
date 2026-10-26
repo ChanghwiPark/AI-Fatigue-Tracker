@@ -74,6 +74,15 @@ public struct MenuBarView: View {
                     MenuBarAccessHelper.closeMenuBarExtra()
                     DebugWindowManager.shared.showDebugWindow()
                 }
+
+                bottomActionRow(
+                    title: "온보딩 화면 열기",
+                    icon: "arrow.counterclockwise"
+                ) {
+                    dismiss()
+                    MenuBarAccessHelper.closeMenuBarExtra()
+                    OnboardingWindowManager.shared.showOnboardingWindow()
+                }
             }
 
             bottomActionRow(

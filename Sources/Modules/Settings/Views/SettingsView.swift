@@ -409,9 +409,31 @@ public struct SettingsView: View {
                 .cornerRadius(8)
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Config.Colors.line, lineWidth: 0.8))
 
-                // 오른쪽 하단 앱 종료 버튼 (상단 카드 우측 경계선에 깔끔하게 정렬)
+                // 하단 보조 액션 (온보딩 프로세스 다시 실행 / 앱 종료)
                 HStack {
+                    Button(action: {
+                        SettingsWindowManager.shared.closeSettingsWindow()
+                        OnboardingWindowManager.shared.showOnboardingWindow()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("온보딩 프로세스 다시 실행 (테스트)")
+                                .font(.system(size: 11.5, weight: .semibold))
+                        }
+                        .foregroundColor(Config.Colors.ink)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Config.Colors.cardBackground)
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Config.Colors.line, lineWidth: 0.8))
+                        )
+                    }
+                    .buttonStyle(.plain)
+
                     Spacer()
+
                     Button(role: .destructive) {
                         isQuitConfirmPresented = true
                     } label: {

@@ -3,7 +3,8 @@ import AppKit
 
 /// 첫 실행 시 표시되는 직관적 온보딩 뷰
 /// 1단계: 참여자 실명 입력
-/// 2단계: 3대 권한 실시간 감지 및 원클릭 단계별 안내 (손쉬운 사용, 화면 기록, 마이크)
+/// 2단계: 3대 권한 실시간 감지 및 원클릭 단계별 안내 (손쉬운 사용, 화면 기록, 브라우저 자동화, 마이크)
+/// 3단계: 연구 시작 및 메뉴 막대/단축키 안내
 public struct OnboardingView: View {
     @ObservedObject var appState: AppState = .shared
     @ObservedObject var permissions: PermissionsManager = .shared
@@ -39,8 +40,11 @@ public struct OnboardingView: View {
             if step == 1 {
                 nameInputStepView
                     .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
-            } else {
+            } else if step == 2 {
                 permissionsStepView
+                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+            } else {
+                completionStepView
                     .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
             }
 
@@ -73,6 +77,11 @@ public struct OnboardingView: View {
         }
         .onChange(of: permissions.isScreenCaptureGranted) { _, granted in
             if granted && activeGuide == .screenCapture {
+                withAnimation(.spring()) { activeGuide = nil }
+            }
+        }
+        .onChange(of: permissions.isBrowserAutomationGranted) { _, granted in
+            if granted && activeGuide == .browser {
                 withAnimation(.spring()) { activeGuide = nil }
             }
         }
@@ -134,6 +143,9 @@ public struct OnboardingView: View {
                     .frame(width: 8, height: 8)
                 Circle()
                     .fill(step == 2 ? Color(hex: Config.Colors.accentHex) : Config.Colors.line)
+                    .frame(width: 8, height: 8)
+                Circle()
+                    .fill(step == 3 ? Color(hex: Config.Colors.accentHex) : Config.Colors.line)
                     .frame(width: 8, height: 8)
             }
         }
@@ -311,7 +323,7 @@ public struct OnboardingView: View {
                         guideSteps: [
                             "1. 방금 열린 [시스템 설정]의 '화면 및 시스템 오디오 녹음'을 확인하세요.",
                             "2. 목록에서 'AIFatigueTracker' 옆의 스위치를 켜주세요.",
-                            "3. '종료 및 다시 열기' 창이 뜨면 클릭하거나 [나중에]를 눌러도 자동 감지됩니다."
+                            "3. 💡 '종료 및 다시 열기' 창이 뜨면 [나중에]를 누르셔도 즉시 권한이 적용됩니다. (앱을 끄실 필요가 없습니다)"
                         ],
                         systemPane: "Privacy_ScreenCapture"
                     ) {
@@ -632,13 +644,145 @@ public struct OnboardingView: View {
         )
     }
 
+    // MARK: - 3단계: 완료 및 시작 안내
+    private var completionStepView: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            // 상단 환영 메시지
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(Color(hex: Config.Colors.accentHex))
+                    Text("모든 설정이 완료되었습니다!")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(Config.Colors.ink)
+                }
+
+                Text("\(inputName)님, 2주간의 AI 피로 연구 참여를 환영합니다.")
+                    .font(.system(size: 13))
+                    .foregroundColor(Config.Colors.mute)
+            }
+
+            // 핵심 이용 방법 카드 3종
+            VStack(spacing: 11) {
+                // 1. 메뉴 막대 상주 안내
+                HStack(alignment: .top, spacing: 13) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(hex: Config.Colors.accentHex).opacity(0.12))
+                            .frame(width: 42, height: 42)
+                        Image(systemName: "menubar.arrow.up.rectangle")
+                            .font(.system(size: 19))
+                            .foregroundColor(Color(hex: Config.Colors.accentHex))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text("1. 상단 메뉴 막대 [🔋>_] 상주")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Config.Colors.ink)
+                            Text("상시 확인")
+                                .font(.system(size: 9.5, weight: .bold))
+                                .foregroundColor(Color(hex: Config.Colors.accentHex))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(Color(hex: Config.Colors.accentHex).opacity(0.12))
+                                .cornerRadius(4)
+                        }
+
+                        Text("화면 맨 위 메뉴 막대에 아이콘이 고정됩니다. 클릭하면 현재 AI 사용 시간, 주간 통계, 일시정지 설정을 언제든 확인하실 수 있습니다.")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(Config.Colors.mute)
+                            .lineSpacing(2)
+                    }
+                }
+                .padding(13)
+                .background(
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Config.Colors.cardBackground)
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Config.Colors.line, lineWidth: 1))
+                )
+
+                // 2. 단축키 ⌥⌘S 안내
+                HStack(alignment: .top, spacing: 13) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.orange.opacity(0.12))
+                            .frame(width: 42, height: 42)
+                        Image(systemName: "command.square.fill")
+                            .font(.system(size: 19))
+                            .foregroundColor(.orange)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text("2. 언제든 피로할 때 단축키 ⌥⌘S")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Config.Colors.ink)
+                            Text("핵심 기능")
+                                .font(.system(size: 9.5, weight: .bold))
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(Color.orange.opacity(0.12))
+                                .cornerRadius(4)
+                        }
+
+                        Text("AI와 대화하다가 답답하거나 지칠 때, ⌥⌘S (Option + Command + S)를 누르면 그 순간의 화면과 함께 생생한 피로 경험을 30초 만에 기록할 수 있습니다.")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(Config.Colors.mute)
+                            .lineSpacing(2)
+                    }
+                }
+                .padding(13)
+                .background(
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Config.Colors.cardBackground)
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Config.Colors.line, lineWidth: 1))
+                )
+
+                // 3. 백그라운드 동작 안내
+                HStack(alignment: .top, spacing: 13) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.blue.opacity(0.1))
+                            .frame(width: 42, height: 42)
+                        Image(systemName: "shield.lefthalf.filled")
+                            .font(.system(size: 19))
+                            .foregroundColor(.blue)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("3. 조용하고 안전한 백그라운드 동작")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Config.Colors.ink)
+
+                        Text("앱은 별도의 Dock 창 없이 백그라운드에서 최소한의 자원으로 가볍게 동작합니다. 개인정보나 대화 내용은 안전하게 암호화되어 연구 목적 외에는 절대 수집되지 않습니다.")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(Config.Colors.mute)
+                            .lineSpacing(2)
+                    }
+                }
+                .padding(13)
+                .background(
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Config.Colors.cardBackground)
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Config.Colors.line, lineWidth: 1))
+                )
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 28)
+    }
+
     // MARK: - 하단 버튼 바
     private var bottomButtonBar: some View {
         HStack {
-            if step == 2 {
+            if step > 1 {
                 Button("이전") {
                     withAnimation {
-                        step = 1
+                        step -= 1
                     }
                 }
                 .buttonStyle(.plain)
@@ -665,7 +809,7 @@ public struct OnboardingView: View {
                 .tint(Color(hex: Config.Colors.accentHex))
                 .font(.system(size: 13, weight: .semibold))
                 .disabled(inputName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            } else {
+            } else if step == 2 {
                 HStack(spacing: 12) {
                     // 친절한 상태 안내 문구 (3대 필수 권한: 손쉬운 사용 + 화면 기록 + 브라우저 자동화)
                     if permissions.isEssentialGranted {
@@ -698,7 +842,7 @@ public struct OnboardingView: View {
                         }
                     }
 
-                    Button("시작하기") {
+                    Button(permissions.isEssentialGranted ? "다음: 시작 안내 →" : "권한 설정 계속") {
                         if !permissions.isAccessibilityGranted {
                             permissions.requestAccessibility()
                             withAnimation(.spring()) {
@@ -715,13 +859,29 @@ public struct OnboardingView: View {
                                 activeGuide = .browser
                             }
                         } else {
-                            appState.completeOnboarding(name: inputName)
+                            withAnimation {
+                                step = 3
+                            }
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(permissions.isEssentialGranted ? Color(hex: Config.Colors.accentHex) : Color.gray)
+                    .tint(permissions.isEssentialGranted ? Color(hex: Config.Colors.accentHex) : Color.orange)
                     .font(.system(size: 13, weight: .bold))
                 }
+            } else {
+                // 3단계: 연구 시작 및 메뉴 막대 열기
+                Button(action: {
+                    appState.completeOnboarding(name: inputName)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("메뉴 막대 열고 연구 시작하기")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(hex: Config.Colors.accentHex))
             }
         }
     }

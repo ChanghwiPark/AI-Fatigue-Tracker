@@ -92,7 +92,9 @@ public final class PermissionsManager: ObservableObject {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
         DispatchQueue.main.async {
-            self.isAccessibilityGranted = trusted
+            if self.isAccessibilityGranted != trusted {
+                self.isAccessibilityGranted = trusted
+            }
         }
     }
 
@@ -113,11 +115,15 @@ public final class PermissionsManager: ObservableObject {
         if #available(macOS 11.0, *) {
             let granted = CGPreflightScreenCaptureAccess()
             DispatchQueue.main.async {
-                self.isScreenCaptureGranted = granted
+                if self.isScreenCaptureGranted != granted {
+                    self.isScreenCaptureGranted = granted
+                }
             }
         } else {
             DispatchQueue.main.async {
-                self.isScreenCaptureGranted = true
+                if !self.isScreenCaptureGranted {
+                    self.isScreenCaptureGranted = true
+                }
             }
         }
     }
@@ -139,14 +145,19 @@ public final class PermissionsManager: ObservableObject {
     public func checkMicrophone() {
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
         DispatchQueue.main.async {
-            self.isMicrophoneGranted = (status == .authorized)
+            let granted = (status == .authorized)
+            if self.isMicrophoneGranted != granted {
+                self.isMicrophoneGranted = granted
+            }
         }
     }
 
     public func requestMicrophone() {
         AVCaptureDevice.requestAccess(for: .audio) { granted in
             DispatchQueue.main.async {
-                self.isMicrophoneGranted = granted
+                if self.isMicrophoneGranted != granted {
+                    self.isMicrophoneGranted = granted
+                }
             }
         }
     }
@@ -154,14 +165,20 @@ public final class PermissionsManager: ObservableObject {
     public func checkSpeechRecognition() {
         let status = SFSpeechRecognizer.authorizationStatus()
         DispatchQueue.main.async {
-            self.isSpeechRecognitionGranted = (status == .authorized)
+            let granted = (status == .authorized)
+            if self.isSpeechRecognitionGranted != granted {
+                self.isSpeechRecognitionGranted = granted
+            }
         }
     }
 
     public func requestSpeechRecognition() {
         SFSpeechRecognizer.requestAuthorization { status in
             DispatchQueue.main.async {
-                self.isSpeechRecognitionGranted = (status == .authorized)
+                let granted = (status == .authorized)
+                if self.isSpeechRecognitionGranted != granted {
+                    self.isSpeechRecognitionGranted = granted
+                }
             }
         }
     }
@@ -210,7 +227,9 @@ public final class PermissionsManager: ObservableObject {
     public func checkBrowserAutomation(bundleId: String) {
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil else {
             DispatchQueue.main.async {
-                self.browserAutomationStatuses[bundleId] = false
+                if self.browserAutomationStatuses[bundleId] != false {
+                    self.browserAutomationStatuses[bundleId] = false
+                }
             }
             return
         }
@@ -223,7 +242,9 @@ public final class PermissionsManager: ObservableObject {
 
         let granted = (status == noErr)
         DispatchQueue.main.async {
-            self.browserAutomationStatuses[bundleId] = granted
+            if self.browserAutomationStatuses[bundleId] != granted {
+                self.browserAutomationStatuses[bundleId] = granted
+            }
         }
     }
 
@@ -237,7 +258,9 @@ public final class PermissionsManager: ObservableObject {
             AEDisposeDesc(&desc)
             if status == noErr {
                 DispatchQueue.main.async {
-                    self.browserAutomationStatuses[bundleId] = true
+                    if self.browserAutomationStatuses[bundleId] != true {
+                        self.browserAutomationStatuses[bundleId] = true
+                    }
                 }
                 if !openSettings { return }
             }
@@ -254,7 +277,9 @@ public final class PermissionsManager: ObservableObject {
             let errorNum = errorDict?[NSAppleScript.errorNumber] as? Int
             let granted = (errorDict == nil || errorNum != -1743)
             DispatchQueue.main.async {
-                self.browserAutomationStatuses[bundleId] = granted
+                if self.browserAutomationStatuses[bundleId] != granted {
+                    self.browserAutomationStatuses[bundleId] = granted
+                }
             }
         }
         if openSettings {
@@ -262,13 +287,18 @@ public final class PermissionsManager: ObservableObject {
         }
     }
 
-    /// 설치된 모든 브라우저를 한 번에 일괄 요청 및 시스템 설정 자동화 탭 열기
+    /// 설치된 모든 브라우저를 백그라운드 큐에서 안전하게 일괄 요청 및 시스템 설정 자동화 탭 열기
     public func requestAllBrowserAutomation() {
-        for b in installedBrowsers {
-            requestBrowserAutomation(bundleId: b.bundleId, openSettings: false)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            for b in self.installedBrowsers {
+                self.requestBrowserAutomation(bundleId: b.bundleId, openSettings: false)
+            }
+            self.checkAllBrowserAutomation()
+            DispatchQueue.main.async {
+                self.openSystemSettings(pane: "Privacy_Automation")
+            }
         }
-        checkAllBrowserAutomation()
-        openSystemSettings(pane: "Privacy_Automation")
     }
 
     // MARK: - 시스템 설정 열기 유틸

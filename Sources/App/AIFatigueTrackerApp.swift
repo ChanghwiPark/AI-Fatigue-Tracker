@@ -129,6 +129,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             exit(0)
         }
     }
+
+    /// 사용자가 Finder나 Launchpad에서 앱을 다시 클릭했을 때 반응
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        print("[AppDelegate] applicationShouldHandleReopen 호출됨 (hasVisibleWindows: \(flag))")
+        if !AppState.shared.hasCompletedOnboarding {
+            OnboardingWindowManager.shared.showOnboardingWindow()
+            return true
+        }
+        if flag {
+            for window in sender.windows where window.isVisible && !window.className.contains("MenuBar") && !window.className.contains("StatusBar") {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return true
+            }
+        }
+        MenuBarAccessHelper.openMenuBarExtra(delay: 0.1)
+        return true
+    }
 }
 
 @main
