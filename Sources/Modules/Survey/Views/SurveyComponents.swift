@@ -2,6 +2,75 @@ import SwiftUI
 import Speech
 import AVFoundation
 
+// MARK: - 0. 공통 섹션 카드 컨테이너 (비주얼 하이어라키 & 그룹핑)
+/// 설문 문항들을 테마별(01 작업 맥락, 02 피로도 평가 등)로 시각적 그룹핑하여 인지 부하를 줄이고 계층 구조를 명확히 하는 카드 컨테이너
+public struct SurveySectionCard<Content: View>: View {
+    public let badgeNumber: String
+    public let title: String
+    public let isRequired: Bool
+    public let content: Content
+
+    public init(
+        badgeNumber: String,
+        title: String,
+        isRequired: Bool = true,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.badgeNumber = badgeNumber
+        self.title = title
+        self.isRequired = isRequired
+        self.content = content()
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // 카드 헤더 (넘버 배지 + 타이틀 + 필수/선택 칩)
+            HStack(alignment: .center, spacing: 8) {
+                // 넘버 배지
+                Text(badgeNumber)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(Color(hex: Config.Colors.accentHex))
+                    .frame(width: 20, height: 20)
+                    .background(
+                        Circle()
+                            .fill(Color(hex: Config.Colors.accentHex).opacity(0.12))
+                    )
+
+                // 섹션 제목
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Config.Colors.ink)
+
+                Spacer()
+
+                // 필수 / 선택 배지
+                Text(isRequired ? "필수" : "선택")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(isRequired ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2.5)
+                    .background(
+                        Capsule()
+                            .fill(isRequired ? Color(hex: Config.Colors.accentHex).opacity(0.12) : Color.gray.opacity(0.12))
+                    )
+            }
+
+            // 본문 콘텐츠
+            content
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Config.Colors.cardBackground)
+                .shadow(color: Color.black.opacity(0.02), radius: 2, x: 0, y: 1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Config.Colors.line.opacity(0.65), lineWidth: 0.8)
+        )
+    }
+}
+
 // MARK: - 1. 공통 헤더 컴포넌트
 /// 설문 창 최상단 헤더: 아이콘 배지와 16.5pt 강조 타이포그래피, AI 도구명 시각적 하이라이트로 내부 문항과 확실히 구분
 public struct SurveyHeaderView: View {
@@ -1624,6 +1693,7 @@ public struct FlowLayout: Layout {
 }
 
 // MARK: - 9. 2026 개편 작업 및 역할 분담 섹션 (Task & Role Division)
+/// 3단계 역할 분담: 상단 '작업 목적' 전폭 입력 후, 'AI가 하는 일'과 '내가 하는 일'을 좌우 2열(Side-by-Side)로 배치하여 협업 구도를 한눈에 대조
 public struct TaskRoleDivisionSectionView: View {
     public let surveyType: SurveyType
     @Binding public var taskPurpose: SubjectiveAnswer
@@ -1654,8 +1724,8 @@ public struct TaskRoleDivisionSectionView: View {
     private var isStart: Bool { surveyType == .start }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // 1. 사용 목적 (시작/중간/자발적 공통)
+        VStack(alignment: .leading, spacing: 12) {
+            // 1. 사용 목적 (시작/중간/자발적 공통) - 전폭 배치
             if surveyType == .mid || surveyType == .diary {
                 SituationInputOrCaptureSectionView(
                     situationAnswer: $taskPurpose,
@@ -1667,60 +1737,80 @@ public struct TaskRoleDivisionSectionView: View {
                 )
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("어떤 작업을 하려고 하나요?")
-                        .font(.system(size: 13.5, weight: .bold))
+                    Text(isStart ? "어떤 작업을 하려고 하나요?" : "어떤 작업을 하고 있나요?")
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundColor(Config.Colors.ink)
 
                     SubjectiveInputFieldView(
                         label: nil,
-                        placeholder: "예: 관련 문헌 찾기, 논문 읽은것 다듬기, 실험 데이터 분석",
+                        placeholder: "예: 관련 문헌 찾기, 논문 읽은 문장 다듬기, 실험 데이터 분석",
                         fieldKey: "task_purpose",
                         chipOptions: [],
                         isSingleLine: false,
+                        isInsideCard: true,
                         onFocusChanged: onFocusChanged,
                         answer: $taskPurpose
                     )
                 }
             }
 
-            // 2. AI가 하는 일 (기대와 실제)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(isStart ? "이번 작업에서 AI가 어떤 도움을 주길 기대하나요?" : "이번 작업에서 AI가 어떤 도움을 주고 있나요?")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Config.Colors.ink)
+            // 2 & 3. 사이드 바이 사이드 2열 분할: 'AI가 하는 일' vs '내가 하는 일'
+            HStack(alignment: .top, spacing: 10) {
+                // 좌측 열: AI가 하는 일 (기대와 실제)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 4) {
+                        Text("🤖")
+                            .font(.system(size: 11.5))
+                        Text(isStart ? "AI가 어떤 도움을?" : "AI가 어떤 도움을?")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Config.Colors.ink)
+                            .lineLimit(1)
+                    }
 
-                SubjectiveInputFieldView(
-                    label: nil,
-                    placeholder: "예: 핵심만 빠르게 정리, 초안 틀만 잡아주기",
-                    fieldKey: "ai_role",
-                    chipOptions: [],
-                    isSingleLine: false,
-                    onFocusChanged: onFocusChanged,
-                    answer: $aiRole
-                )
-            }
+                    SubjectiveInputFieldView(
+                        label: nil,
+                        placeholder: "예: 핵심만 빠르게 정리, 초안 틀만 잡아주기",
+                        fieldKey: "ai_role",
+                        chipOptions: [],
+                        isSingleLine: false,
+                        isInsideCard: true,
+                        onFocusChanged: onFocusChanged,
+                        answer: $aiRole
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            // 3. 내가 하는 일 (기대와 실제)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(isStart ? "나는 무엇을 할 예정인가요?" : "나는 무엇을 하고 있나요?")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Config.Colors.ink)
+                // 우측 열: 내가 하는 일 (기대와 실제)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 4) {
+                        Text("👤")
+                            .font(.system(size: 11.5))
+                        Text(isStart ? "나는 무엇을 할 예정?" : "나는 무엇을 하고 있나요?")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Config.Colors.ink)
+                            .lineLimit(1)
+                    }
 
-                SubjectiveInputFieldView(
-                    label: nil,
-                    placeholder: "예: 요약이 맞는지 확인, 초안을 내 말투로 고치기",
-                    fieldKey: "my_role",
-                    chipOptions: [],
-                    isSingleLine: false,
-                    onFocusChanged: onFocusChanged,
-                    answer: $myRole
-                )
+                    SubjectiveInputFieldView(
+                        label: nil,
+                        placeholder: "예: 요약이 맞는지 확인, 초안을 내 말투로 고치기",
+                        fieldKey: "my_role",
+                        chipOptions: [],
+                        isSingleLine: false,
+                        isInsideCard: true,
+                        onFocusChanged: onFocusChanged,
+                        answer: $myRole
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 }
 
-// MARK: - 10. 피로도 및 AI 피로 영향 & 이유 섹션
+// MARK: - 10. 피로도 및 AI 피로 영향 & 이유 섹션 (Side-by-Side Reasons)
+/// 피로도 평가 섹션: 피로도 5점 척도, AI 피로도 5점 척도와 함께
+/// 'AI로 인한 피로 이유'와 '그 외의 이유'를 사이드 바이 사이드(2열 스플릿)로 배치하여 직관적 대비 제공
 public struct FatigueAndAIReasonSectionView: View {
     public let surveyType: SurveyType
     @Binding public var fatigueScore: Int?
@@ -1752,87 +1842,120 @@ public struct FatigueAndAIReasonSectionView: View {
             // 1. 피로도 5점 척도
             FatigueScaleView(score: $fatigueScore)
 
-            // 2. AI 피로도 (시작 설문 제외)
-            if !isStart {
+            // 2. 시작 설문 (.start) vs 중간/종료/자발적 분기
+            if isStart {
+                // 시작 설문: AI 피로도 없이 '그 외의 이유 (선택)' 단일 전폭 노출
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 4) {
+                        Text("어떤 점 때문에 피로하다고 느꼈나요?")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundColor(Config.Colors.ink)
+                        Spacer()
+                        Text("선택")
+                            .font(.system(size: 10))
+                            .foregroundColor(Config.Colors.mute)
+                    }
+
+                    SubjectiveInputFieldView(
+                        label: nil,
+                        placeholder: "예: 업무량, 마감, 수면 부족, 회의",
+                        fieldKey: "fatigue_reason_start",
+                        chipOptions: NonAIFatigueReasonChipOptions.items,
+                        isSingleLine: false,
+                        isInsideCard: true,
+                        onFocusChanged: onFocusChanged,
+                        answer: $fatigueReasonNonAI
+                    )
+                }
+            } else {
+                // 중간/종료/자발적: AI 피로 영향도 5점 척도
                 LikertScaleView(
                     title: "지금 피로에 AI가 얼마나 영향을 주었나요?",
                     options: SurveyScaleDefinitions.aiImpactScale,
                     selectedValue: $aiFatigueImpactScore
                 )
 
-                // 3. AI로 인한 이유 (AI 영향도가 선택되었을 때 조건부 노출)
-                if let impact = aiFatigueImpactScore {
-                    if impact >= 2 {
-                        // AI 피로도 조금 ~ 매우 (2~5점)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("AI의 어떤 점 때문에 피로했나요?")
-                                .font(.system(size: 12.5, weight: .semibold))
-                                .foregroundColor(Config.Colors.ink)
+                // 3 & 4. [사이드 바이 사이드 2열 스플릿] AI로 인한 이유 vs 그 외의 이유
+                let impact = aiFatigueImpactScore ?? 0
+                let isHighImpact = impact >= 2 || aiFatigueImpactScore == nil
 
-                            SubjectiveInputFieldView(
-                                label: nil,
-                                placeholder: "예: 검증이 번거로움, 반복 요청, 결과 기다리느라 쉬지 못함",
-                                fieldKey: "fatigue_reason_ai",
-                                chipOptions: FatigueReasonChipOptions.items,
-                                isSingleLine: false,
-                                onFocusChanged: onFocusChanged,
-                                answer: $fatigueReasonAI
-                            )
-                        }
-                        .padding(10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(hex: Config.Colors.accentHex).opacity(0.05))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color(hex: Config.Colors.accentHex).opacity(0.18), lineWidth: 0.8)
-                                )
-                        )
-                    } else {
-                        // AI 피로도 전혀 (1점)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("AI가 피로에 영향을 주지 않은 이유는 무엇인가요?")
-                                .font(.system(size: 12.5, weight: .semibold))
+                HStack(alignment: .top, spacing: 10) {
+                    // 좌측 (50%): AI로 인한 피로 이유 (조건부 인셋 카드)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 4) {
+                            Text("🤖")
+                                .font(.system(size: 11))
+                            Text(isHighImpact ? "AI의 어떤 점 때문에?" : "AI 영향이 없었던 이유")
+                                .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundColor(Config.Colors.ink)
-
-                            SubjectiveInputFieldView(
-                                label: nil,
-                                placeholder: "예: 간단한 작업이라 신경 쓸 게 없었어요, 오히려 생각할 부담이 줄어듬",
-                                fieldKey: "fatigue_reason_ai_none",
-                                chipOptions: [],
-                                isSingleLine: false,
-                                onFocusChanged: onFocusChanged,
-                                answer: $fatigueReasonAI
-                            )
+                                .lineLimit(1)
+                            Spacer()
+                            Text("선택")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(Config.Colors.mute)
                         }
-                        .padding(10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Config.Colors.cardBackground)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Config.Colors.line.opacity(0.4), lineWidth: 0.8)
-                                )
+
+                        SubjectiveInputFieldView(
+                            label: nil,
+                            placeholder: isHighImpact
+                                ? "예: 검증이 번거로움, 반복 요청, 결과 기다림"
+                                : "예: 간단한 작업이라 신경 쓸 게 없었음",
+                            fieldKey: isHighImpact ? "fatigue_reason_ai" : "fatigue_reason_ai_none",
+                            chipOptions: isHighImpact ? FatigueReasonChipOptions.items : [],
+                            isSingleLine: false,
+                            isInsideCard: true,
+                            onFocusChanged: onFocusChanged,
+                            answer: $fatigueReasonAI
                         )
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(hex: Config.Colors.accentHex).opacity(0.04))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color(hex: Config.Colors.accentHex).opacity(0.18), lineWidth: 0.8)
+                            )
+                    )
+
+                    // 우측 (50%): 그 외의 피로 이유 (뉴트럴 카드)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 4) {
+                            Text("☕️")
+                                .font(.system(size: 11))
+                            Text("AI 외에 어떤 점 때문에?")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundColor(Config.Colors.ink)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("선택")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(Config.Colors.mute)
+                        }
+
+                        SubjectiveInputFieldView(
+                            label: nil,
+                            placeholder: "예: 업무량, 마감, 수면 부족, 회의",
+                            fieldKey: "fatigue_reason_non_ai",
+                            chipOptions: NonAIFatigueReasonChipOptions.items,
+                            isSingleLine: false,
+                            isInsideCard: true,
+                            onFocusChanged: onFocusChanged,
+                            answer: $fatigueReasonNonAI
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Config.Colors.cardBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Config.Colors.line.opacity(0.5), lineWidth: 0.8)
+                            )
+                    )
                 }
-            }
-
-            // 4. 그 외의 이유 (선택 문항)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(isStart ? "어떤 점 때문에 피로하다고 느꼈나요? (선택)" : "AI 외에 어떤 점 때문에 피로하다고 느꼈나요? (선택)")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(Config.Colors.mute)
-
-                SubjectiveInputFieldView(
-                    label: nil,
-                    placeholder: "예: 업무량, 마감, 수면부족, 회의",
-                    fieldKey: "fatigue_reason_non_ai",
-                    chipOptions: [],
-                    isSingleLine: false,
-                    onFocusChanged: onFocusChanged,
-                    answer: $fatigueReasonNonAI
-                )
             }
         }
     }

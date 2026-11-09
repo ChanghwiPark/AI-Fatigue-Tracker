@@ -181,23 +181,35 @@ public enum SurveyScaleDefinitions {
 /// AI 피로 영향 2점(조금) 이상일 때 선택할 수 있는 추천 칩 목록 ("피로하다고 느낀 점")
 public enum FatigueReasonChipOptions {
     public static let items: [String] = [
-        "결과가 너무 길거나 많아요",
-        "하나하나 확인하느라 지쳐요",
-        "원하는 답이 안 나와 계속 수정해요",
-        "AI가 돌아가는 동안 계속 신경이 쓰여요",
-        "내 힘으로 한 게 아닌 것 같아 마음이 불편해요",
-        "화면을 오래 읽어 눈이 피로해요"
+        "결과 검증이 번거로움",
+        "반복해서 다시 요청함",
+        "결과 기다리느라 못 쉼",
+        "원하는 답이 안 나옴",
+        "계속 신경이 쓰임",
+        "화면을 오래 읽어 눈 피로"
+    ]
+}
+
+/// AI 외의 다른 요인으로 피로할 때 선택할 수 있는 추천 칩 목록 ("AI 외에 어떤 점 때문에?")
+public enum NonAIFatigueReasonChipOptions {
+    public static let items: [String] = [
+        "많은 업무량",
+        "마감 압박",
+        "수면 부족",
+        "잦은 회의",
+        "복잡한 문제 해결",
+        "주변 소음/환경"
     ]
 }
 
 /// 유용성 2점(조금) 이상일 때 선택할 수 있는 추천 칩 목록
 public enum UsefulnessChipOptions {
     public static let items: [String] = [
-        "시간이 줄었어요",
-        "막힌 걸 풀어줬어요",
-        "아이디어를 얻었어요",
-        "초안을 빨리 만들었어요",
-        "확인과 검토를 대신해줬어요"
+        "초안을 빨리 받음",
+        "자료 찾는 시간 단축",
+        "막힌 생각 해결",
+        "새로운 아이디어 획득",
+        "확인·검토 대신해줌"
     ]
 }
 

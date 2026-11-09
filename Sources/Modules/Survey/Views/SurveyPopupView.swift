@@ -332,157 +332,205 @@ public struct SurveyPopupView: View {
 
     // MARK: - [start] 장면 01 시작 콘텐츠 (사용 목적, AI가 하는 일, 내가 하는 일, 피로도, 그 외의 이유)
     private var startSurveyContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TaskRoleDivisionSectionView(
-                surveyType: .start,
-                taskPurpose: $formState.taskPurpose,
-                aiRole: $formState.aiRole,
-                myRole: $formState.myRole,
-                capturedImagePath: $formState.capturedImagePath,
-                onRetakeAreaCapture: onRetakeAreaCapture,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
+        VStack(alignment: .leading, spacing: 14) {
+            SurveySectionCard(
+                badgeNumber: "01",
+                title: "작업 맥락 & 역할 분담",
+                isRequired: true
+            ) {
+                TaskRoleDivisionSectionView(
+                    surveyType: .start,
+                    taskPurpose: $formState.taskPurpose,
+                    aiRole: $formState.aiRole,
+                    myRole: $formState.myRole,
+                    capturedImagePath: $formState.capturedImagePath,
+                    onRetakeAreaCapture: onRetakeAreaCapture,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
 
-            Divider()
-                .background(Config.Colors.line.opacity(0.5))
-
-            FatigueAndAIReasonSectionView(
-                surveyType: .start,
-                fatigueScore: $formState.fatigueScore,
-                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
-                fatigueReasonAI: $formState.fatigueReasonAI,
-                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
+            SurveySectionCard(
+                badgeNumber: "02",
+                title: "피로도 점검",
+                isRequired: true
+            ) {
+                FatigueAndAIReasonSectionView(
+                    surveyType: .start,
+                    fatigueScore: $formState.fatigueScore,
+                    aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                    fatigueReasonAI: $formState.fatigueReasonAI,
+                    fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
         }
     }
 
     // MARK: - [mid] 장면 02 중간 콘텐츠 (사용 목적/캡처, AI·내 역할, 피로도, AI 피로도 & 이유, 그 외 이유, AI 유용성 & 이유)
     private var midSurveyContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TaskRoleDivisionSectionView(
-                surveyType: .mid,
-                taskPurpose: $formState.taskPurpose,
-                aiRole: $formState.aiRole,
-                myRole: $formState.myRole,
-                capturedImagePath: $formState.capturedImagePath,
-                onRetakeAreaCapture: onRetakeAreaCapture,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
+        VStack(alignment: .leading, spacing: 14) {
+            SurveySectionCard(
+                badgeNumber: "01",
+                title: "작업 맥락 & 역할 분담",
+                isRequired: true
+            ) {
+                TaskRoleDivisionSectionView(
+                    surveyType: .mid,
+                    taskPurpose: $formState.taskPurpose,
+                    aiRole: $formState.aiRole,
+                    myRole: $formState.myRole,
+                    capturedImagePath: $formState.capturedImagePath,
+                    onRetakeAreaCapture: onRetakeAreaCapture,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
 
-            Divider()
-                .background(Config.Colors.line.opacity(0.5))
+            SurveySectionCard(
+                badgeNumber: "02",
+                title: "피로도 평가",
+                isRequired: true
+            ) {
+                FatigueAndAIReasonSectionView(
+                    surveyType: .mid,
+                    fatigueScore: $formState.fatigueScore,
+                    aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                    fatigueReasonAI: $formState.fatigueReasonAI,
+                    fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
 
-            FatigueAndAIReasonSectionView(
-                surveyType: .mid,
-                fatigueScore: $formState.fatigueScore,
-                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
-                fatigueReasonAI: $formState.fatigueReasonAI,
-                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
-
-            Divider()
-                .background(Config.Colors.line.opacity(0.5))
-
-            AIUsefulnessAndReasonSectionView(
-                surveyType: .mid,
-                usefulnessScore: $formState.usefulnessScore,
-                usefulnessReason: $formState.usefulnessReason,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
+            SurveySectionCard(
+                badgeNumber: "03",
+                title: "AI 유용성 평가",
+                isRequired: true
+            ) {
+                AIUsefulnessAndReasonSectionView(
+                    surveyType: .mid,
+                    usefulnessScore: $formState.usefulnessScore,
+                    usefulnessReason: $formState.usefulnessReason,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
         }
     }
 
     // MARK: - [end] 장면 03 종료 콘텐츠 (피로도, AI 피로도 & 이유, 그 외 이유, AI 유용성 & 이유, NASA-TLX)
     private var endSurveyContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            FatigueAndAIReasonSectionView(
-                surveyType: .end,
-                fatigueScore: $formState.fatigueScore,
-                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
-                fatigueReasonAI: $formState.fatigueReasonAI,
-                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
+        VStack(alignment: .leading, spacing: 14) {
+            SurveySectionCard(
+                badgeNumber: "01",
+                title: "피로도 평가",
+                isRequired: true
+            ) {
+                FatigueAndAIReasonSectionView(
+                    surveyType: .end,
+                    fatigueScore: $formState.fatigueScore,
+                    aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                    fatigueReasonAI: $formState.fatigueReasonAI,
+                    fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
 
-            Divider()
-                .background(Config.Colors.line.opacity(0.5))
+            SurveySectionCard(
+                badgeNumber: "02",
+                title: "AI 유용성 평가",
+                isRequired: true
+            ) {
+                AIUsefulnessAndReasonSectionView(
+                    surveyType: .end,
+                    usefulnessScore: $formState.usefulnessScore,
+                    usefulnessReason: $formState.usefulnessReason,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
 
-            AIUsefulnessAndReasonSectionView(
-                surveyType: .end,
-                usefulnessScore: $formState.usefulnessScore,
-                usefulnessReason: $formState.usefulnessReason,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
-
-            Divider()
-                .background(Config.Colors.line.opacity(0.5))
-
-            TLXSliderSectionView(tlx: $formState.endTLX, onModified: {
-                formState.isTLXModified = true
-            })
+            SurveySectionCard(
+                badgeNumber: "03",
+                title: "작업 부하 및 수행 평가 (NASA-TLX)",
+                isRequired: true
+            ) {
+                TLXSliderSectionView(tlx: $formState.endTLX, onModified: {
+                    formState.isTLXModified = true
+                })
+            }
         }
     }
 
     // MARK: - [diary / nudge] 다이어리 및 넛지용 콘텐츠 (사용 목적/캡처, AI·내 역할, 피로도, AI 피로도 & 이유, 그 외 이유)
     private var diaryOrNudgeContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TaskRoleDivisionSectionView(
-                surveyType: .diary,
-                taskPurpose: $formState.taskPurpose,
-                aiRole: $formState.aiRole,
-                myRole: $formState.myRole,
-                capturedImagePath: $formState.capturedImagePath,
-                onRetakeAreaCapture: onRetakeAreaCapture,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
+        VStack(alignment: .leading, spacing: 14) {
+            SurveySectionCard(
+                badgeNumber: "01",
+                title: "작업 맥락 & 역할 분담",
+                isRequired: true
+            ) {
+                TaskRoleDivisionSectionView(
+                    surveyType: .diary,
+                    taskPurpose: $formState.taskPurpose,
+                    aiRole: $formState.aiRole,
+                    myRole: $formState.myRole,
+                    capturedImagePath: $formState.capturedImagePath,
+                    onRetakeAreaCapture: onRetakeAreaCapture,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
 
-            Divider()
-                .background(Config.Colors.line.opacity(0.5))
-
-            FatigueAndAIReasonSectionView(
-                surveyType: .diary,
-                fatigueScore: $formState.fatigueScore,
-                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
-                fatigueReasonAI: $formState.fatigueReasonAI,
-                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
+            SurveySectionCard(
+                badgeNumber: "02",
+                title: "피로도 평가",
+                isRequired: true
+            ) {
+                FatigueAndAIReasonSectionView(
+                    surveyType: .diary,
+                    fatigueScore: $formState.fatigueScore,
+                    aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                    fatigueReasonAI: $formState.fatigueReasonAI,
+                    fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
         }
     }
 
     // MARK: - [followUp] 응답 30분 뒤 피로 영향 및 대처 점검 콘텐츠
     private var followUpContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            FollowUp30MinSectionView(
-                fatigueImpactOnWork: $formState.fatigueImpactOnWork,
-                isNoImpactOnWork: $formState.isNoImpactOnWork,
-                copingStrategy: $formState.copingStrategy,
-                isNoCopingStrategy: $formState.isNoCopingStrategy,
-                improvementIdea: $formState.improvementIdea,
-                onFocusChanged: { isFocused in
-                    formState.isTextFieldFocused = isFocused
-                }
-            )
+        VStack(alignment: .leading, spacing: 14) {
+            SurveySectionCard(
+                badgeNumber: "01",
+                title: "피로의 영향 및 대처 점검",
+                isRequired: true
+            ) {
+                FollowUp30MinSectionView(
+                    fatigueImpactOnWork: $formState.fatigueImpactOnWork,
+                    isNoImpactOnWork: $formState.isNoImpactOnWork,
+                    copingStrategy: $formState.copingStrategy,
+                    isNoCopingStrategy: $formState.isNoCopingStrategy,
+                    improvementIdea: $formState.improvementIdea,
+                    onFocusChanged: { isFocused in
+                        formState.isTextFieldFocused = isFocused
+                    }
+                )
+            }
         }
     }
 

@@ -94,40 +94,49 @@ public struct VoluntaryRecordPopupView: View {
 
             // 2. 본문 영역
             ScrollView(.vertical, showsIndicators: isOverflowing) {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     // 문항 1. 작업 목적 및 역할 분담 (사용 목적/캡처, AI가 하는 일, 내가 하는 일)
-                    TaskRoleDivisionSectionView(
-                        surveyType: .diary,
-                        taskPurpose: $formState.taskPurpose,
-                        aiRole: $formState.aiRole,
-                        myRole: $formState.myRole,
-                        capturedImagePath: Binding(
-                            get: { formState.capturedImagePath ?? context.localImagePath },
-                            set: { newPath in
-                                formState.capturedImagePath = newPath
-                                context.localImagePath = newPath
+                    SurveySectionCard(
+                        badgeNumber: "01",
+                        title: "작업 맥락 & 역할 분담",
+                        isRequired: true
+                    ) {
+                        TaskRoleDivisionSectionView(
+                            surveyType: .diary,
+                            taskPurpose: $formState.taskPurpose,
+                            aiRole: $formState.aiRole,
+                            myRole: $formState.myRole,
+                            capturedImagePath: Binding(
+                                get: { formState.capturedImagePath ?? context.localImagePath },
+                                set: { newPath in
+                                    formState.capturedImagePath = newPath
+                                    context.localImagePath = newPath
+                                }
+                            ),
+                            onRetakeAreaCapture: onRetakeAreaCapture,
+                            onFocusChanged: { isFocused in
+                                formState.isTextFieldFocused = isFocused
                             }
-                        ),
-                        onRetakeAreaCapture: onRetakeAreaCapture,
-                        onFocusChanged: { isFocused in
-                            formState.isTextFieldFocused = isFocused
-                        }
-                    )
-
-                    Divider()
-                        .background(Config.Colors.line.opacity(0.5))
+                        )
+                    }
 
                     // 문항 2. 피로도, AI 피로도 & 이유, 그 외 이유
-                    FatigueAndAIReasonSectionView(
-                        surveyType: .diary,
-                        fatigueScore: $formState.fatigueScore,
-                        aiFatigueImpactScore: $formState.aiFatigueImpactScore,
-                        fatigueReasonAI: $formState.fatigueReasonAI,
-                        fatigueReasonNonAI: $formState.fatigueReasonNonAI,
-                        onFocusChanged: { isFocused in
-                            formState.isTextFieldFocused = isFocused
-                        }
-                    )
+                    SurveySectionCard(
+                        badgeNumber: "02",
+                        title: "피로도 평가",
+                        isRequired: true
+                    ) {
+                        FatigueAndAIReasonSectionView(
+                            surveyType: .diary,
+                            fatigueScore: $formState.fatigueScore,
+                            aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                            fatigueReasonAI: $formState.fatigueReasonAI,
+                            fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                            onFocusChanged: { isFocused in
+                                formState.isTextFieldFocused = isFocused
+                            }
+                        )
+                    }
                 }
                 .padding(16)
                 .background(
