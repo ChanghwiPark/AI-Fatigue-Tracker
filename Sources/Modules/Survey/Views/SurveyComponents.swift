@@ -1413,11 +1413,12 @@ public struct SubjectiveInputFieldView: View {
     }
 }
 
-// MARK: - 5. NASA-TLX 6개 슬라이더 컴포넌트
+// MARK: - 5. NASA-TLX 6개 슬라이더 컴포넌트 (방안 1: 양끝 마이크로 앵커 + ⓘ 상세 툴팁)
 public struct TLXSliderSectionView: View {
     @Binding public var tlx: NASA_TLXScores
     public var onModified: (() -> Void)? = nil
     @State private var modifiedFields: Set<String> = []
+    @State private var hoveredFieldKey: String? = nil
 
     public init(tlx: Binding<NASA_TLXScores>, onModified: (() -> Void)? = nil) {
         self._tlx = tlx
@@ -1427,34 +1428,64 @@ public struct TLXSliderSectionView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("지금까지의 작업을 돌아보며 평가해 주세요.")
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: 12.5, weight: .bold))
                 .foregroundColor(Config.Colors.ink)
-                .padding(.top, 4)
-
-            VStack(spacing: 10) {
-                tlxSliderRow(key: "mental", label: "정신적 요구", value: $tlx.mentalDemand)
-                tlxSliderRow(key: "physical", label: "신체적 요구", value: $tlx.physicalDemand)
-                tlxSliderRow(key: "temporal", label: "시간 압박", value: $tlx.temporalDemand)
-                tlxSliderRow(key: "performance", label: "성과 만족", value: $tlx.performance)
-                tlxSliderRow(key: "effort", label: "노력", value: $tlx.effort)
-                tlxSliderRow(key: "frustration", label: "좌절감", value: $tlx.frustration)
-
-                // 하단 양끝 척도 기준 안내: 미니멀 텍스트 앵커
-                HStack {
-                    Text("0 (매우 낮음)")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Config.Colors.mute.opacity(0.85))
-                    Spacer()
-                    Text("50 (보통)")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Config.Colors.mute.opacity(0.65))
-                    Spacer()
-                    Text("100 (매우 높음)")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Config.Colors.mute.opacity(0.85))
-                }
-                .padding(.horizontal, 4)
                 .padding(.top, 2)
+
+            VStack(spacing: 12) {
+                tlxSliderRow(
+                    key: "mental",
+                    label: "정신적 부담",
+                    tooltip: "머리를 얼마나 많이 써야 했나요?",
+                    minLabel: "0 (매우 낮음)",
+                    maxLabel: "100 (매우 높음)",
+                    value: $tlx.mentalDemand
+                )
+
+                tlxSliderRow(
+                    key: "physical",
+                    label: "신체적 부담",
+                    tooltip: "몸이 얼마나 힘들었나요?",
+                    minLabel: "0 (매우 낮음)",
+                    maxLabel: "100 (매우 높음)",
+                    value: $tlx.physicalDemand
+                )
+
+                tlxSliderRow(
+                    key: "temporal",
+                    label: "시간 압박",
+                    tooltip: "얼마나 시간에 쫓기며 작업했나요?",
+                    minLabel: "0 (매우 낮음)",
+                    maxLabel: "100 (매우 높음)",
+                    value: $tlx.temporalDemand
+                )
+
+                tlxSliderRow(
+                    key: "performance",
+                    label: "결과 만족도",
+                    tooltip: "하려던 일을 얼마나 잘 해냈나요?",
+                    minLabel: "0 (매우 좋음)",
+                    maxLabel: "100 (매우 나쁨)",
+                    value: $tlx.performance
+                )
+
+                tlxSliderRow(
+                    key: "effort",
+                    label: "노력",
+                    tooltip: "지금 결과를 내기까지 얼마나 애써야 했나요?",
+                    minLabel: "0 (매우 낮음)",
+                    maxLabel: "100 (매우 높음)",
+                    value: $tlx.effort
+                )
+
+                tlxSliderRow(
+                    key: "frustration",
+                    label: "좌절감",
+                    tooltip: "얼마나 불안하거나, 짜증 나거나, 스트레스를 받았나요?",
+                    minLabel: "0 (매우 낮음)",
+                    maxLabel: "100 (매우 높음)",
+                    value: $tlx.frustration
+                )
             }
             .padding(12)
             .background(
@@ -1462,27 +1493,70 @@ public struct TLXSliderSectionView: View {
                     .fill(Config.Colors.cardBackground)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(Config.Colors.line.opacity(0.35), lineWidth: 0.6)
+                            .stroke(Config.Colors.line.opacity(0.4), lineWidth: 0.6)
                     )
             )
         }
     }
 
-    private func tlxSliderRow(key: String, label: String, value: Binding<Int>) -> some View {
+    private func tlxSliderRow(
+        key: String,
+        label: String,
+        tooltip: String,
+        minLabel: String,
+        maxLabel: String,
+        value: Binding<Int>
+    ) -> some View {
         let isTouched = modifiedFields.contains(key)
+        let isHovered = (hoveredFieldKey == key)
 
         return VStack(spacing: 3) {
-            HStack {
-                Text(label)
-                    .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundColor(Config.Colors.ink)
+            // 항목 라벨 + ⓘ 툴팁 아이콘 + 현재 점수
+            HStack(alignment: .center, spacing: 4) {
+                HStack(spacing: 4) {
+                    Text(label)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundColor(Config.Colors.ink)
+
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 10))
+                        .foregroundColor(isHovered ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute.opacity(0.8))
+                }
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        if hovering {
+                            hoveredFieldKey = key
+                        } else if hoveredFieldKey == key {
+                            hoveredFieldKey = nil
+                        }
+                    }
+                }
+                .help(tooltip)
+                .overlay(alignment: .topLeading) {
+                    if isHovered {
+                        UnifiedTooltipView(
+                            text: tooltip,
+                            arrowDirection: .down,
+                            arrowX: 24
+                        )
+                        .frame(height: 0, alignment: .bottomLeading)
+                        .offset(x: 10, y: -6)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                        .zIndex(200)
+                    }
+                }
+
                 Spacer()
+
                 Text("\(value.wrappedValue)")
                     .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                     .foregroundColor(isTouched ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute)
-                    .frame(width: 24, alignment: .trailing)
+                    .frame(width: 28, alignment: .trailing)
             }
 
+            // 슬라이더 바
             Slider(
                 value: Binding(
                     get: { Double(value.wrappedValue) },
@@ -1505,7 +1579,23 @@ public struct TLXSliderSectionView: View {
             )
             .controlSize(.mini)
             .tint(Color(hex: Config.Colors.accentHex))
+
+            // 양끝 척도 기준 안내 (방안 1: 슬라이더 바로 밑 마이크로 앵커)
+            HStack {
+                Text(minLabel)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundColor(Config.Colors.mute.opacity(0.85))
+
+                Spacer()
+
+                Text(maxLabel)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundColor(Config.Colors.mute.opacity(0.85))
+            }
+            .padding(.horizontal, 2)
+            .padding(.top, -2)
         }
+        .zIndex(isHovered ? 150 : 1)
     }
 }
 
@@ -1738,7 +1828,7 @@ public struct TaskRoleDivisionSectionView: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(isStart ? "어떤 작업을 하려고 하나요?" : "어떤 작업을 하고 있나요?")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12.5, weight: .bold))
                         .foregroundColor(Config.Colors.ink)
 
                     SubjectiveInputFieldView(
@@ -1761,15 +1851,16 @@ public struct TaskRoleDivisionSectionView: View {
                     HStack(spacing: 4) {
                         Text("🤖")
                             .font(.system(size: 11.5))
-                        Text(isStart ? "AI가 어떤 도움을?" : "AI가 어떤 도움을?")
-                            .font(.system(size: 12, weight: .semibold))
+                        Text(isStart ? "AI가 할 일" : "AI가 하는 일")
+                            .font(.system(size: 11.5, weight: .semibold))
                             .foregroundColor(Config.Colors.ink)
                             .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     SubjectiveInputFieldView(
                         label: nil,
-                        placeholder: "예: 핵심만 빠르게 정리, 초안 틀만 잡아주기",
+                        placeholder: isStart ? "예: 핵심만 빠르게 정리, 초안 틀 잡아주기" : "예: 핵심만 요약, 초안 작성 중",
                         fieldKey: "ai_role",
                         chipOptions: [],
                         isSingleLine: false,
@@ -1785,15 +1876,16 @@ public struct TaskRoleDivisionSectionView: View {
                     HStack(spacing: 4) {
                         Text("👤")
                             .font(.system(size: 11.5))
-                        Text(isStart ? "나는 무엇을 할 예정?" : "나는 무엇을 하고 있나요?")
-                            .font(.system(size: 12, weight: .semibold))
+                        Text(isStart ? "내가 할 일" : "내가 하는 일")
+                            .font(.system(size: 11.5, weight: .semibold))
                             .foregroundColor(Config.Colors.ink)
                             .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     SubjectiveInputFieldView(
                         label: nil,
-                        placeholder: "예: 요약이 맞는지 확인, 초안을 내 말투로 고치기",
+                        placeholder: isStart ? "예: 요약이 맞는지 확인, 내 말투로 고치기" : "예: 요약 맞는지 확인, 수정 중",
                         fieldKey: "my_role",
                         chipOptions: [],
                         isSingleLine: false,
@@ -1848,11 +1940,11 @@ public struct FatigueAndAIReasonSectionView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 4) {
                         Text("어떤 점 때문에 피로하다고 느꼈나요?")
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.system(size: 12.5, weight: .bold))
                             .foregroundColor(Config.Colors.ink)
                         Spacer()
                         Text("선택")
-                            .font(.system(size: 10))
+                            .font(.system(size: 9.5, weight: .medium))
                             .foregroundColor(Config.Colors.mute)
                     }
 
@@ -1884,14 +1976,15 @@ public struct FatigueAndAIReasonSectionView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 4) {
                             Text("🤖")
-                                .font(.system(size: 11))
-                            Text(isHighImpact ? "AI의 어떤 점 때문에?" : "AI 영향이 없었던 이유")
+                                .font(.system(size: 11.5))
+                            Text(isHighImpact ? "AI로 인한 이유" : "AI 영향 없는 이유")
                                 .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundColor(Config.Colors.ink)
                                 .lineLimit(1)
-                            Spacer()
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 2)
                             Text("선택")
-                                .font(.system(size: 9.5))
+                                .font(.system(size: 9.5, weight: .medium))
                                 .foregroundColor(Config.Colors.mute)
                         }
 
@@ -1923,14 +2016,15 @@ public struct FatigueAndAIReasonSectionView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 4) {
                             Text("☕️")
-                                .font(.system(size: 11))
-                            Text("AI 외에 어떤 점 때문에?")
+                                .font(.system(size: 11.5))
+                            Text("그 외의 이유")
                                 .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundColor(Config.Colors.ink)
                                 .lineLimit(1)
-                            Spacer()
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 2)
                             Text("선택")
-                                .font(.system(size: 9.5))
+                                .font(.system(size: 9.5, weight: .medium))
                                 .foregroundColor(Config.Colors.mute)
                         }
 
@@ -1995,9 +2089,15 @@ public struct AIUsefulnessAndReasonSectionView: View {
                 if u >= 2 {
                     // 유용성 조금 ~ 매우 (2~5점)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("AI의 어떤 점이 도움이 되었나요? (선택)")
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundColor(Config.Colors.ink)
+                        HStack {
+                            Text("AI가 도움이 된 이유")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundColor(Config.Colors.ink)
+                            Spacer()
+                            Text("선택")
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundColor(Config.Colors.mute)
+                        }
 
                         SubjectiveInputFieldView(
                             label: nil,
@@ -2005,6 +2105,7 @@ public struct AIUsefulnessAndReasonSectionView: View {
                             fieldKey: "usefulness_reason_positive",
                             chipOptions: UsefulnessChipOptions.items,
                             isSingleLine: false,
+                            isInsideCard: true,
                             onFocusChanged: onFocusChanged,
                             answer: $usefulnessReason
                         )
@@ -2021,9 +2122,15 @@ public struct AIUsefulnessAndReasonSectionView: View {
                 } else {
                     // 유용성 전혀 (1점)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("AI가 도움이 되지 않은 이유는 무엇인가요? (선택)")
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundColor(Config.Colors.ink)
+                        HStack {
+                            Text("AI가 도움이 되지 않은 이유")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundColor(Config.Colors.ink)
+                            Spacer()
+                            Text("선택")
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundColor(Config.Colors.mute)
+                        }
 
                         SubjectiveInputFieldView(
                             label: nil,
@@ -2031,6 +2138,7 @@ public struct AIUsefulnessAndReasonSectionView: View {
                             fieldKey: "usefulness_reason_negative",
                             chipOptions: [],
                             isSingleLine: false,
+                            isInsideCard: true,
                             onFocusChanged: onFocusChanged,
                             answer: $usefulnessReason
                         )
@@ -2079,16 +2187,17 @@ public struct FollowUp30MinSectionView: View {
         VStack(alignment: .leading, spacing: 16) {
             // 문항 1. 피로의 영향 (필수 ●)
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .center, spacing: 8) {
                     Text("피로를 느낀 뒤, 작업하는 방식이 달라진 점이 있나요?")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12.5, weight: .bold))
                         .foregroundColor(Config.Colors.ink)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    Spacer()
+                    Spacer(minLength: 6)
 
                     Toggle(isOn: $isNoImpactOnWork) {
                         Text("없음")
-                            .font(.system(size: 12, weight: isNoImpactOnWork ? .bold : .regular))
+                            .font(.system(size: 11.5, weight: isNoImpactOnWork ? .bold : .regular))
                             .foregroundColor(isNoImpactOnWork ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute)
                     }
                     .toggleStyle(.checkbox)
@@ -2104,20 +2213,21 @@ public struct FollowUp30MinSectionView: View {
             }
 
             Divider()
-                .background(Config.Colors.line.opacity(0.5))
+                .background(Config.Colors.line.opacity(0.4))
 
             // 문항 2. 대처 방식 (필수 ●)
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .center, spacing: 8) {
                     Text("그 사이 피로를 줄이려고 해 본 것이 있나요?")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12.5, weight: .bold))
                         .foregroundColor(Config.Colors.ink)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    Spacer()
+                    Spacer(minLength: 6)
 
                     Toggle(isOn: $isNoCopingStrategy) {
                         Text("없음")
-                            .font(.system(size: 12, weight: isNoCopingStrategy ? .bold : .regular))
+                            .font(.system(size: 11.5, weight: isNoCopingStrategy ? .bold : .regular))
                             .foregroundColor(isNoCopingStrategy ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute)
                     }
                     .toggleStyle(.checkbox)
@@ -2133,17 +2243,26 @@ public struct FollowUp30MinSectionView: View {
             }
 
             Divider()
-                .background(Config.Colors.line.opacity(0.5))
+                .background(Config.Colors.line.opacity(0.4))
 
             // 문항 3. 개선 방안 (선택 ○)
             VStack(alignment: .leading, spacing: 6) {
-                Text("AI, 나, 또는 조직 차원에서 무엇이 달랐다면 덜 피로했을까요? (선택)")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(Config.Colors.mute)
+                HStack(alignment: .center) {
+                    Text("무엇이 달랐다면 덜 피로했을까요?")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundColor(Config.Colors.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 4)
+
+                    Text("선택")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundColor(Config.Colors.mute)
+                }
 
                 FollowUpCustomTextEditor(
                     text: $improvementIdea,
-                    placeholder: "예: 내가 지쳤을 때는 AI가 답을 짧고 천천히 줬으면, AI를 쓰기 전에 목표와 시간을 미리 정해 뒀으면, AI를 꼭 써야 한다는 압박이 덜했으면",
+                    placeholder: "예: 내가 지쳤을 때는 AI가 답을 짧고 천천히 줬으면, AI를 쓰기 전에 목표와 시간을 미리 정해 뒀으면",
                     onFocusChanged: onFocusChanged
                 )
             }

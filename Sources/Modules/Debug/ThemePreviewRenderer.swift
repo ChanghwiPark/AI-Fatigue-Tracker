@@ -2091,7 +2091,7 @@ public struct DesktopFullMockupView: View {
                         onHeightChanged: { _ in },
                         onAction: { _, _ in }
                     )
-                    .frame(width: 372)
+                    .frame(width: Config.Survey.popupDefaultWidth)
 
                 case .startSurvey:
                     SurveyPopupView(
@@ -2104,7 +2104,7 @@ public struct DesktopFullMockupView: View {
                         onHeightChanged: { _ in },
                         onAction: { _, _ in }
                     )
-                    .frame(width: 372)
+                    .frame(width: Config.Survey.popupDefaultWidth)
 
                 case .endSurvey:
                     // 아무것도 선택하지 않은 깨끗한 초기 상태 (맨 위부터 온전히 노출)
@@ -2121,7 +2121,7 @@ public struct DesktopFullMockupView: View {
                         onHeightChanged: { _ in },
                         onAction: { _, _ in }
                     )
-                    .frame(width: 372)
+                    .frame(width: Config.Survey.popupDefaultWidth)
 
                 case .diarySurvey:
                     VoluntaryRecordPopupView(
@@ -2134,7 +2134,7 @@ public struct DesktopFullMockupView: View {
                         onCancel: {},
                         onSave: { _, _ in }
                     )
-                    .frame(width: 372)
+                    .frame(width: Config.Survey.popupDefaultWidth)
 
                 case .menuBarDropdown:
                     MenuBarView(showDebugMenu: false)
@@ -2155,7 +2155,7 @@ public struct DesktopFullMockupView: View {
                         onHeightChanged: { _ in },
                         onAction: { _, _ in }
                     )
-                    .frame(width: 372)
+                    .frame(width: Config.Survey.popupDefaultWidth)
                 }
             }
             .padding(.top, 24 + 12)

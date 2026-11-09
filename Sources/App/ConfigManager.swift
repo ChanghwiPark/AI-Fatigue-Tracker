@@ -35,7 +35,7 @@ public final class ConfigManager: ObservableObject {
         public static let dailyNudgeHour: Int = 18                       // 18시
         public static let dailyNudgeMinute: Int = 30                     // 30분
         public static let idleThreshold: TimeInterval = 2 * 60           // 2분
-        public static let popupWidth: CGFloat = 372.0                    // 372pt
+        public static let popupWidth: CGFloat = 390.0                    // 390pt (2열 스플릿 최적화 너비)
         public static let highFatigueThreshold: Int = 6                  // 피로 6점 이상 심층 전개
         public static let highUsefulnessThreshold: Int = 4               // 유용성 4점 이상 후속 전개
     }
@@ -53,7 +53,7 @@ public final class ConfigManager: ObservableObject {
         public static let dailyNudgeHour: Int = 18
         public static let dailyNudgeMinute: Int = 30
         public static let idleThreshold: TimeInterval = 10               // 10초
-        public static let popupWidth: CGFloat = 372.0
+        public static let popupWidth: CGFloat = 390.0
         public static let highFatigueThreshold: Int = 6
         public static let highUsefulnessThreshold: Int = 4
     }
@@ -183,9 +183,10 @@ public final class ConfigManager: ObservableObject {
             ? ud.double(forKey: Keys.idleThreshold)
             : Defaults.idleThreshold
 
-        self.popupWidth = ud.object(forKey: Keys.popupWidth) != nil
+        let savedWidth = ud.object(forKey: Keys.popupWidth) != nil
             ? CGFloat(ud.double(forKey: Keys.popupWidth))
             : Defaults.popupWidth
+        self.popupWidth = max(savedWidth, Defaults.popupWidth)
 
         self.highFatigueThreshold = ud.object(forKey: Keys.highFatigueThreshold) != nil
             ? ud.integer(forKey: Keys.highFatigueThreshold)
