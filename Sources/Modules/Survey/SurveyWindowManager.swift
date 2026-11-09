@@ -15,11 +15,12 @@ public final class SurveyWindowManager: ObservableObject {
 
     private init() {}
 
-    /// 설문 팝업 윈도우를 주 모니터 우상단에 슬라이드 인 애니메이션과 함께 표시
+    /// 설문 팝업 윈도우를 주 모니터 우상단에 슬라이드 인 애니메이션과 함께 표시 (스누즈 임시 저장 draftState 지원)
     public func showPopup(
         type: SurveyType,
         session: AISession? = nil,
         snoozeCount: Int = 0,
+        draftState: SurveyDraftState? = nil,
         onAction: @escaping (SurveyAction, [String: String]?) -> Void
     ) {
         DispatchQueue.main.async {
@@ -80,6 +81,7 @@ public final class SurveyWindowManager: ObservableObject {
                 sessionTitle: session?.title,
                 aiTool: session?.toolName,
                 snoozeCount: snoozeCount,
+                draftState: draftState,
                 maxContentHeight: maxScrollHeight,
                 onHeightChanged: { [weak self] newTotalHeight in
                     self?.updateHeight(newTotalHeight)

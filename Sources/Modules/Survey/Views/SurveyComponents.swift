@@ -80,6 +80,7 @@ public struct SurveyHeaderView: View {
     public let currentStep: Int?
     public let totalSteps: Int?
     public let stepTitle: String?
+    public let isContinuingDraft: Bool
 
     public init(
         title: String,
@@ -87,7 +88,8 @@ public struct SurveyHeaderView: View {
         surveyType: SurveyType? = nil,
         currentStep: Int? = nil,
         totalSteps: Int? = nil,
-        stepTitle: String? = nil
+        stepTitle: String? = nil,
+        isContinuingDraft: Bool = false
     ) {
         self.title = title
         self.toolName = toolName
@@ -95,6 +97,7 @@ public struct SurveyHeaderView: View {
         self.currentStep = currentStep
         self.totalSteps = totalSteps
         self.stepTitle = stepTitle
+        self.isContinuingDraft = isContinuingDraft
     }
 
     private var headerIcon: String {
@@ -134,9 +137,15 @@ public struct SurveyHeaderView: View {
 
             Spacer()
 
-            // 우측 상단 단계 인디케이터 캡슐 배지 (페이징 시 몇 단계인지 명확히 노출)
+            // 우측 상단 단계 인디케이터 캡슐 배지 (페이징 시 몇 단계인지 명확히 노출, 스누즈 이어서 작성 시 배지 표시)
             if let cur = currentStep, let tot = totalSteps, tot > 1 {
                 HStack(spacing: 4) {
+                    if isContinuingDraft {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundColor(Color(hex: Config.Colors.accentHex))
+                    }
+
                     Text("\(cur)/\(tot)")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(Color(hex: Config.Colors.accentHex))

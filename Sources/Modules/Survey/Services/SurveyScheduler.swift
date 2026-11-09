@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import AppKit
+import SwiftUI
 
 /// 설문 팝업 스케줄링 및 트리거 규칙 관리자
 /// - 2단계 AI 세션 기준 팝업 시점 관리 (start, mid, end, diary, nudge)
@@ -23,7 +24,7 @@ public final class SurveyScheduler: ObservableObject {
     private var fatigueFollowUpTimer: Timer? = nil
     private var isHandlingPopupAction: Bool = false
     private var isReplacingPopup: Bool = false
-    private var pendingReplacement: (type: SurveyType, session: AISession?, snoozeCount: Int)? = nil
+    private var pendingReplacement: (type: SurveyType, session: AISession?, snoozeCount: Int, draftState: SurveyDraftState?)? = nil
 
     // 세션별 순수 활성 누적 시간(초) 기준 다음 mid 목표치 (sessionId -> 목표 누적 시간)
     private var nextMidTargetDurationBySession: [UUID: TimeInterval] = [:]
@@ -158,7 +159,13 @@ public final class SurveyScheduler: ObservableObject {
                 let check = self.canShowPopup(type: pending.type, force: false, session: pending.session)
                 if check.allowed {
                     self.pendingSurvey = nil
-                    _ = self.requestSurvey(type: pending.type, session: pending.session, force: false, snoozeCount: pending.snoozeCount)
+                    _ = self.requestSurvey(
+                        type: pending.type,
+                        session: pending.session,
+                        force: false,
+                        snoozeCount: pending.snoozeCount,
+                        draftState: pending.draftState
+                    )
                 }
             }
         }
@@ -236,7 +243,8 @@ public final class SurveyScheduler: ObservableObject {
         type: SurveyType,
         session: AISession? = nil,
         force: Bool = false,
-        snoozeCount: Int = 0
+        snoozeCount: Int = 0,
+        draftState: SurveyDraftState? = nil
     ) -> Bool {
         // diary는 자발적 피로 기록(화면 캡처 연동) 전용 플로우 실행
         if type == .diary {
@@ -253,7 +261,13 @@ public final class SurveyScheduler: ObservableObject {
         // 단, 중간 설문(.mid)은 자리 비움 중 보류하지 않고, 사용자가 AI에 복귀했을 때 활성 누적 시간으로 자연스럽게 트리거되도록 함
         if isUserIdleOrScreenLocked() && !force {
             if type != .mid {
-                pendingSurvey = PendingSurveyRequest(type: type, session: session, requestedAt: Date(), snoozeCount: snoozeCount)
+                pendingSurvey = PendingSurveyRequest(
+                    type: type,
+                    session: session,
+                    requestedAt: Date(),
+                    snoozeCount: snoozeCount,
+                    draftState: draftState
+                )
             }
             return false
         }
@@ -298,7 +312,7 @@ public final class SurveyScheduler: ObservableObject {
         // [중복 노출 시 이후에 뜨는 최신 팝업으로 대체 / 교체 노출]:
         // 화면에 이미 다른 팝업이 떠 있거나 닫히는 중인 경우, 새 팝업을 차단하지 않고 기존 팝업을 닫은 뒤 최신 팝업으로 교체 노출
         if isPopupPresented || isHandlingPopupAction || isReplacingPopup {
-            pendingReplacement = (type: type, session: session, snoozeCount: snoozeCount)
+            pendingReplacement = (type: type, session: session, snoozeCount: snoozeCount, draftState: draftState)
             if !isReplacingPopup && !isHandlingPopupAction {
                 isReplacingPopup = true
                 dismissCurrentPopup { [weak self] in
@@ -306,21 +320,27 @@ public final class SurveyScheduler: ObservableObject {
                     self.isReplacingPopup = false
                     if let next = self.pendingReplacement {
                         self.pendingReplacement = nil
-                        _ = self.showPopupInternal(type: next.type, session: next.session, snoozeCount: next.snoozeCount)
+                        _ = self.showPopupInternal(
+                            type: next.type,
+                            session: next.session,
+                            snoozeCount: next.snoozeCount,
+                            draftState: next.draftState
+                        )
                     }
                 }
             }
             return true
         }
 
-        return showPopupInternal(type: type, session: session, snoozeCount: snoozeCount)
+        return showPopupInternal(type: type, session: session, snoozeCount: snoozeCount, draftState: draftState)
     }
 
     /// 실제 윈도우 생성 및 팝업 화면 표시 내부 구현
     private func showPopupInternal(
         type: SurveyType,
         session: AISession?,
-        snoozeCount: Int
+        snoozeCount: Int,
+        draftState: SurveyDraftState? = nil
     ) -> Bool {
         let shownAt = Date()
         let linkedSession = session ?? SessionManager.shared.currentSession
@@ -338,11 +358,12 @@ public final class SurveyScheduler: ObservableObject {
             UserDefaults.standard.set(shownAt, forKey: lastEndPopupKey)
         }
 
-        // 윈도우 매니저를 통해 화면 우상단에 팝업 띄움
+        // 윈도우 매니저를 통해 화면 우상단에 팝업 띄움 (스누즈 임시 저장 draftState 전달)
         SurveyWindowManager.shared.showPopup(
             type: type,
             session: linkedSession,
-            snoozeCount: snoozeCount
+            snoozeCount: snoozeCount,
+            draftState: draftState
         ) { [weak self] action, payload in
             self?.handlePopupAction(
                 action: action,
@@ -419,12 +440,28 @@ public final class SurveyScheduler: ObservableObject {
             }
         }
 
-        // 4) "5분 뒤에" 스누즈 예약 처리 (최대 2회)
+        // 4) "5분 뒤에" 스누즈 예약 처리 (최대 2회, 입력 데이터 및 작성 단계 임시 저장 보존)
         if action == .snooze {
             let nextCount = currentSnoozeCount + 1
             if nextCount <= Config.Scheduler.maxSnoozeCount {
-                scheduleSnooze(type: type, session: session, delay: Config.Scheduler.snoozeDuration, snoozeCount: nextCount)
+                let currentDraft = SurveyDraftStore.shared.getDraft(for: type)
+                scheduleSnooze(
+                    type: type,
+                    session: session,
+                    delay: Config.Scheduler.snoozeDuration,
+                    snoozeCount: nextCount,
+                    draftState: currentDraft
+                )
+                // 우측 상단 슬림 알림 토스트 표시
+                SaveConfirmationToast.shared.show(
+                    message: "임시 저장됨 (5분 뒤 계속)",
+                    icon: "clock.arrow.circlepath",
+                    iconColor: Color.orange
+                )
             }
+        } else if action == .response || action == .skip {
+            // 설문 응답 완료 또는 건너뛰기 시 임시 저장본 삭제
+            SurveyDraftStore.shared.clearDraft(for: type)
         }
     }
 
@@ -465,12 +502,13 @@ public final class SurveyScheduler: ObservableObject {
         )
     }
 
-    // MARK: - 6. "5분 뒤에" 스누즈 관리 (표준 5분, 최대 2회)
+    // MARK: - 6. "5분 뒤에" 스누즈 관리 (표준 5분, 최대 2회, 임시 저장 draftState 지원)
     public func scheduleSnooze(
         type: SurveyType,
         session: AISession?,
         delay: TimeInterval = Config.Scheduler.snoozeDuration,
-        snoozeCount: Int = 1
+        snoozeCount: Int = 1,
+        draftState: SurveyDraftState? = nil
     ) {
         let targetDate = Date().addingTimeInterval(delay)
         var snoozeRequest = SnoozedSurveyRequest(
@@ -478,14 +516,21 @@ public final class SurveyScheduler: ObservableObject {
             session: session,
             scheduledAt: Date(),
             targetDate: targetDate,
-            snoozeCount: snoozeCount
+            snoozeCount: snoozeCount,
+            draftState: draftState
         )
 
         let timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             guard let self = self else { return }
             self.activeSnoozes.removeAll(where: { $0.id == snoozeRequest.id })
-            // 스누즈 팝업 표시 (snoozeCount 보존 전달)
-            _ = self.requestSurvey(type: type, session: session, force: false, snoozeCount: snoozeRequest.snoozeCount)
+            // 스누즈 팝업 표시 (snoozeCount 및 draftState 보존 전달)
+            _ = self.requestSurvey(
+                type: type,
+                session: session,
+                force: false,
+                snoozeCount: snoozeRequest.snoozeCount,
+                draftState: snoozeRequest.draftState
+            )
         }
 
         snoozeRequest.timer = timer
@@ -497,7 +542,13 @@ public final class SurveyScheduler: ObservableObject {
         if let idx = activeSnoozes.firstIndex(where: { $0.id == id }) {
             let req = activeSnoozes.remove(at: idx)
             req.timer?.invalidate()
-            _ = requestSurvey(type: req.type, session: req.session, force: true, snoozeCount: req.snoozeCount)
+            _ = requestSurvey(
+                type: req.type,
+                session: req.session,
+                force: true,
+                snoozeCount: req.snoozeCount,
+                draftState: req.draftState
+            )
         }
     }
 
@@ -570,12 +621,20 @@ public struct PendingSurveyRequest: Identifiable {
     public let session: AISession?
     public let requestedAt: Date
     public let snoozeCount: Int
+    public let draftState: SurveyDraftState?
 
-    public init(type: SurveyType, session: AISession?, requestedAt: Date, snoozeCount: Int = 0) {
+    public init(
+        type: SurveyType,
+        session: AISession?,
+        requestedAt: Date,
+        snoozeCount: Int = 0,
+        draftState: SurveyDraftState? = nil
+    ) {
         self.type = type
         self.session = session
         self.requestedAt = requestedAt
         self.snoozeCount = snoozeCount
+        self.draftState = draftState
     }
 }
 
@@ -587,6 +646,7 @@ public struct SnoozedSurveyRequest: Identifiable {
     public let targetDate: Date
     public var timer: Timer?
     public let snoozeCount: Int
+    public let draftState: SurveyDraftState?
 
     public init(
         id: UUID = UUID(),
@@ -595,7 +655,8 @@ public struct SnoozedSurveyRequest: Identifiable {
         scheduledAt: Date,
         targetDate: Date,
         timer: Timer? = nil,
-        snoozeCount: Int = 1
+        snoozeCount: Int = 1,
+        draftState: SurveyDraftState? = nil
     ) {
         self.id = id
         self.type = type
@@ -604,5 +665,6 @@ public struct SnoozedSurveyRequest: Identifiable {
         self.targetDate = targetDate
         self.timer = timer
         self.snoozeCount = snoozeCount
+        self.draftState = draftState
     }
 }

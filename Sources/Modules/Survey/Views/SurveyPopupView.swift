@@ -39,6 +39,7 @@ public struct SurveyPopupView: View {
         aiTool: String? = nil,
         snoozeCount: Int = 0,
         initialStep: Int = 1,
+        draftState: SurveyDraftState? = nil,
         initialSituation: String? = nil,
         initialFatigue: Int? = nil,
         initialAIFatigueImpact: Int? = nil,
@@ -58,7 +59,11 @@ public struct SurveyPopupView: View {
         self.onHeightChanged = onHeightChanged
         self.onRetakeAreaCapture = onRetakeAreaCapture
         self.onAction = onAction
-        self._currentStep = State(initialValue: initialStep)
+
+        // 스누즈 재알림(snoozeCount > 0) 또는 전달된 draftState가 있는 경우 임시 저장본 우선 복원
+        let resolvedDraft = draftState ?? (snoozeCount > 0 ? SurveyDraftStore.shared.getDraft(for: surveyType) : nil)
+        let resolvedStep = resolvedDraft?.currentStep ?? initialStep
+        self._currentStep = State(initialValue: resolvedStep)
 
         let defaultEstimatedHeight: CGFloat = {
             switch surveyType {
@@ -90,6 +95,13 @@ public struct SurveyPopupView: View {
         } else if isTestHigh {
             state.selectedFatigueCategories = ["overload", "physicalTired"]
         }
+
+        // 임시 저장된 Draft가 있다면 모든 입력 데이터(텍스트, 점수, 칩 등) 복원
+        if let draft = resolvedDraft {
+            state.restore(from: draft)
+            print("[SurveyPopupView] [\(surveyType.rawValue)] 임시 저장본 복원 완료: 단계 \(resolvedStep), 피로도 \(String(describing: draft.fatigueScore))")
+        }
+
         self._formState = StateObject(wrappedValue: state)
     }
 
@@ -285,14 +297,15 @@ public struct SurveyPopupView: View {
         let isOverflowing = innerContentHeight > maxContentHeight
 
         return VStack(spacing: 0) {
-            // 1. 헤더 (주 제목 노출, AI 도구명 및 아이콘 배지, 우상단 단계 인디케이터)
+            // 1. 헤더 (주 제목 노출, AI 도구명 및 아이콘 배지, 우상단 단계 인디케이터, 스누즈 이어서 작성 배지)
             SurveyHeaderView(
                 title: sceneTitle,
                 toolName: detectedToolName,
                 surveyType: surveyType,
                 currentStep: currentStep,
                 totalSteps: totalSteps,
-                stepTitle: currentStepTitle
+                stepTitle: currentStepTitle,
+                isContinuingDraft: (snoozeCount > 0 && SurveyDraftStore.shared.hasDraft(for: surveyType))
             )
             .padding(.horizontal, 16)
             .padding(.top, 14)
@@ -621,10 +634,19 @@ public struct SurveyPopupView: View {
             .keyboardShortcut(.cancelAction)
             .disabled(isActionProcessed)
 
-            // 5분 뒤에 버튼 (최대 2회)
+            // 5분 뒤에 버튼 (최대 2회, 클릭 시 현재 입력 상태 및 단계 임시 저장)
             Button(action: {
-                guard canSnooze else { return }
-                performAction(.snooze, nil)
+                guard canSnooze, !isActionProcessed else { return }
+                // 1. 현재 작성 중이던 모든 폼 상태와 단계(currentStep) 임시 저장
+                let draft = formState.createDraft(currentStep: currentStep)
+                SurveyDraftStore.shared.saveDraft(for: surveyType, draft: draft)
+                print("[SurveyPopupView] '5분 뒤에' 클릭 -> 현재 \(currentStep)단계 및 입력 데이터 임시 저장 완료")
+
+                // 2. 스누즈 페이로드 생성
+                var payload = formState.toResponsePayload(type: surveyType)
+                payload["is_snoozed_draft"] = "true"
+                payload["draft_step"] = "\(currentStep)"
+                performAction(.snooze, payload)
             }) {
                 HStack(spacing: 3) {
                     Image(systemName: "clock.arrow.circlepath")
@@ -640,7 +662,7 @@ public struct SurveyPopupView: View {
             }
             .buttonStyle(.plain)
             .disabled(!canSnooze || isActionProcessed)
-            .help(canSnooze ? "5분 뒤에 다시 알림 (최대 2회, 현재 \(snoozeCount)/\(Config.Scheduler.maxSnoozeCount))" : "스누즈 한도(최대 2회)에 도달했습니다")
+            .help(canSnooze ? "현재 작성 중인 내용을 임시 저장하고 5분 뒤에 이어서 작성합니다 (최대 2회, 현재 \(snoozeCount)/\(Config.Scheduler.maxSnoozeCount))" : "스누즈 한도(최대 2회)에 도달했습니다")
 
             Spacer()
 
@@ -754,6 +776,9 @@ public struct SurveyPopupView: View {
         stopCountdown()
         if speechManager.isRecording {
             SpeechInputManager.shared.stopRecording()
+        }
+        if action == .response || action == .skip {
+            SurveyDraftStore.shared.clearDraft(for: surveyType)
         }
         onAction(action, payload)
     }

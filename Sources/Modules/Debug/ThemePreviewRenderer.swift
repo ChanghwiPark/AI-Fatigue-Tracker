@@ -1766,6 +1766,15 @@ public enum ThemePreviewRenderer {
             path: "\(artifactDir)/desktop_survey_mid_light.png"
         )
 
+        // 5-1-b. "5분 뒤에" 스누즈 후 이전 상태를 이어서 작성 중인 데스크탑 화면 (라이트 모드)
+        renderView(
+            DesktopFullMockupView(sceneType: .snoozeResumedSurvey),
+            width: 1440,
+            height: 900,
+            appearance: .aqua,
+            path: "\(artifactDir)/desktop_survey_snooze_resume_light.png"
+        )
+
         // 5-2. 시작 설문(.start) 팝업이 우상단에 뜬 전체 데스크탑 화면 (라이트 모드)
         renderView(
             DesktopFullMockupView(sceneType: .startSurvey),
@@ -1855,6 +1864,7 @@ public enum ThemePreviewRenderer {
 // MARK: - 데스크탑 전체 화면 렌더링용 타입 및 컴포넌트
 public enum DesktopSceneType {
     case midSurvey
+    case snoozeResumedSurvey
     case startSurvey
     case endSurvey
     case endSurveyTLX
@@ -2103,6 +2113,31 @@ public struct DesktopFullMockupView: View {
                     )
                     .frame(width: Config.Survey.popupDefaultWidth)
 
+                case .snoozeResumedSurvey:
+                    // 5분 뒤 스누즈 후 이어서 작성 중인 화면 (1단계 작성 완료된 Draft 상태에서 2단계 피로도 평가로 복원된 상태)
+                    SurveyPopupView(
+                        surveyType: .mid,
+                        sessionTitle: "AI 피로도 연구 분석",
+                        aiTool: "ChatGPT",
+                        snoozeCount: 1,
+                        initialStep: 2,
+                        draftState: SurveyDraftState(
+                            currentStep: 2,
+                            fatigueScore: 3,
+                            aiFatigueImpactScore: 3,
+                            taskPurpose: SubjectiveAnswer(customText: "설문 체계 분석 및 초안 정리 중"),
+                            aiRole: SubjectiveAnswer(customText: "핵심만 빠르게 요약, 초안 틀 잡아주기"),
+                            myRole: SubjectiveAnswer(customText: "요약 맞는지 확인, 내 말투로 고치기")
+                        ),
+                        initialSituation: "설문 체계 분석 및 초안 정리 중",
+                        initialFatigue: 3,
+                        initialAIFatigueImpact: 3,
+                        maxContentHeight: 1200,
+                        onHeightChanged: { _ in },
+                        onAction: { _, _ in }
+                    )
+                    .frame(width: Config.Survey.popupDefaultWidth)
+
                 case .startSurvey:
                     SurveyPopupView(
                         surveyType: .start,
@@ -2203,10 +2238,11 @@ public struct DesktopFullMockupView: View {
 
     private var menubarDurationString: String {
         switch sceneType {
-        case .endSurvey: return "ChatGPT 48:30"
+        case .endSurvey, .endSurveyTLX: return "ChatGPT 48:30"
         case .startSurvey: return "ChatGPT 02:10"
         case .diarySurvey: return "ChatGPT 35:20"
         case .followUpSurvey: return "ChatGPT 58:40"
+        case .snoozeResumedSurvey: return "ChatGPT 29:15"
         default: return "ChatGPT 24:15"
         }
     }

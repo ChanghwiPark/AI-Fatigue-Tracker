@@ -11,7 +11,12 @@ public final class SaveConfirmationToast {
 
     private init() {}
 
-    public func show(message: String = "저장 완료", detail: String? = nil) {
+    public func show(
+        message: String = "저장 완료",
+        detail: String? = nil,
+        icon: String = "checkmark",
+        iconColor: Color? = nil
+    ) {
         DispatchQueue.main.async {
             self.toastPanel?.orderOut(nil)
             self.toastPanel = nil
@@ -22,7 +27,11 @@ public final class SaveConfirmationToast {
             let rightMargin: CGFloat = 20.0
             let topMargin: CGFloat = 14.0
 
-            let toastView = MinimalToastCapsuleView(title: message)
+            let toastView = MinimalToastCapsuleView(
+                title: message,
+                icon: icon,
+                iconColor: iconColor ?? Color(hex: Config.Colors.accentHex)
+            )
             let hostingView = NSHostingView(rootView: toastView)
 
             // 텍스트 길이에 맞춘 정확한 고유 크기 측정 (자연스러운 캡슐 폭 자동 결정)
@@ -78,19 +87,27 @@ public final class SaveConfirmationToast {
     }
 }
 
-/// 초미니멀 캡슐 HUD 뷰: 단일 행 [ ✓  저장 완료 ] 형태
+/// 초미니멀 캡슐 HUD 뷰: 단일 행 [ ✓  저장 완료 ] 또는 [ ⏱️ 임시 저장됨 ] 형태
 public struct MinimalToastCapsuleView: View {
     public let title: String
+    public let icon: String
+    public let iconColor: Color
 
-    public init(title: String = "저장 완료") {
+    public init(
+        title: String = "저장 완료",
+        icon: String = "checkmark",
+        iconColor: Color = Color(hex: Config.Colors.accentHex)
+    ) {
         self.title = title
+        self.icon = icon
+        self.iconColor = iconColor
     }
 
     public var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "checkmark")
+            Image(systemName: icon)
                 .font(.system(size: 11, weight: .bold))
-                .foregroundColor(Color(hex: Config.Colors.accentHex))
+                .foregroundColor(iconColor)
 
             Text(title)
                 .font(.system(size: 12, weight: .semibold))

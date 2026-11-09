@@ -652,4 +652,176 @@ public final class SurveyFormState: ObservableObject {
 
         return payload
     }
+
+    // MARK: - 임시 저장(Draft) 스냅샷 생성 및 복원 (5분 뒤에 스누즈 이어서 하기 지원)
+
+    /// 현재 폼의 모든 입력 상태를 임시 저장용 Draft 객체로 스냅샷 복사
+    public func createDraft(currentStep: Int = 1) -> SurveyDraftState {
+        SurveyDraftState(
+            currentStep: currentStep,
+            fatigueScore: self.fatigueScore,
+            aiFatigueImpactScore: self.aiFatigueImpactScore,
+            usefulnessScore: self.usefulnessScore,
+            taskPurpose: self.taskPurpose,
+            aiRole: self.aiRole,
+            myRole: self.myRole,
+            fatigueReasonAI: self.fatigueReasonAI,
+            fatigueReasonNonAI: self.fatigueReasonNonAI,
+            usefulnessReason: self.usefulnessReason,
+            fatigueImpactOnWork: self.fatigueImpactOnWork,
+            isNoImpactOnWork: self.isNoImpactOnWork,
+            copingStrategy: self.copingStrategy,
+            isNoCopingStrategy: self.isNoCopingStrategy,
+            improvementIdea: self.improvementIdea,
+            capturedImagePath: self.capturedImagePath,
+            endTLX: self.endTLX,
+            isTLXModified: self.isTLXModified,
+            selectedFatigueCategories: self.selectedFatigueCategories,
+            savedAt: Date()
+        )
+    }
+
+    /// 임시 저장된 Draft 객체로부터 이전 입력 상태 복원
+    public func restore(from draft: SurveyDraftState) {
+        self.fatigueScore = draft.fatigueScore
+        self.aiFatigueImpactScore = draft.aiFatigueImpactScore
+        self.usefulnessScore = draft.usefulnessScore
+        self.taskPurpose = draft.taskPurpose
+        self.aiRole = draft.aiRole
+        self.myRole = draft.myRole
+        self.fatigueReasonAI = draft.fatigueReasonAI
+        self.fatigueReasonNonAI = draft.fatigueReasonNonAI
+        self.usefulnessReason = draft.usefulnessReason
+        self.fatigueImpactOnWork = draft.fatigueImpactOnWork
+        self.isNoImpactOnWork = draft.isNoImpactOnWork
+        self.copingStrategy = draft.copingStrategy
+        self.isNoCopingStrategy = draft.isNoCopingStrategy
+        self.improvementIdea = draft.improvementIdea
+        self.capturedImagePath = draft.capturedImagePath
+        self.endTLX = draft.endTLX
+        self.isTLXModified = draft.isTLXModified
+        self.selectedFatigueCategories = draft.selectedFatigueCategories
+    }
+}
+
+// MARK: - 설문 임시 저장(Draft) 모델 및 저장소 (5분 뒤에 스누즈 이어서 작성 지원)
+
+/// 스누즈(5분 뒤에) 시 현재 입력 상태와 진행 단계(currentStep)를 안전하게 보존하는 임시 저장 스냅샷
+public struct SurveyDraftState: Equatable {
+    public var currentStep: Int
+    public var fatigueScore: Int?
+    public var aiFatigueImpactScore: Int?
+    public var usefulnessScore: Int?
+    public var taskPurpose: SubjectiveAnswer
+    public var aiRole: SubjectiveAnswer
+    public var myRole: SubjectiveAnswer
+    public var fatigueReasonAI: SubjectiveAnswer
+    public var fatigueReasonNonAI: SubjectiveAnswer
+    public var usefulnessReason: SubjectiveAnswer
+    public var fatigueImpactOnWork: String
+    public var isNoImpactOnWork: Bool
+    public var copingStrategy: String
+    public var isNoCopingStrategy: Bool
+    public var improvementIdea: String
+    public var capturedImagePath: String?
+    public var endTLX: NASA_TLXScores
+    public var isTLXModified: Bool
+    public var selectedFatigueCategories: Set<String>
+    public var savedAt: Date
+
+    public init(
+        currentStep: Int = 1,
+        fatigueScore: Int? = nil,
+        aiFatigueImpactScore: Int? = nil,
+        usefulnessScore: Int? = nil,
+        taskPurpose: SubjectiveAnswer = SubjectiveAnswer(),
+        aiRole: SubjectiveAnswer = SubjectiveAnswer(),
+        myRole: SubjectiveAnswer = SubjectiveAnswer(),
+        fatigueReasonAI: SubjectiveAnswer = SubjectiveAnswer(),
+        fatigueReasonNonAI: SubjectiveAnswer = SubjectiveAnswer(),
+        usefulnessReason: SubjectiveAnswer = SubjectiveAnswer(),
+        fatigueImpactOnWork: String = "",
+        isNoImpactOnWork: Bool = false,
+        copingStrategy: String = "",
+        isNoCopingStrategy: Bool = false,
+        improvementIdea: String = "",
+        capturedImagePath: String? = nil,
+        endTLX: NASA_TLXScores = NASA_TLXScores(),
+        isTLXModified: Bool = false,
+        selectedFatigueCategories: Set<String> = [],
+        savedAt: Date = Date()
+    ) {
+        self.currentStep = currentStep
+        self.fatigueScore = fatigueScore
+        self.aiFatigueImpactScore = aiFatigueImpactScore
+        self.usefulnessScore = usefulnessScore
+        self.taskPurpose = taskPurpose
+        self.aiRole = aiRole
+        self.myRole = myRole
+        self.fatigueReasonAI = fatigueReasonAI
+        self.fatigueReasonNonAI = fatigueReasonNonAI
+        self.usefulnessReason = usefulnessReason
+        self.fatigueImpactOnWork = fatigueImpactOnWork
+        self.isNoImpactOnWork = isNoImpactOnWork
+        self.copingStrategy = copingStrategy
+        self.isNoCopingStrategy = isNoCopingStrategy
+        self.improvementIdea = improvementIdea
+        self.capturedImagePath = capturedImagePath
+        self.endTLX = endTLX
+        self.isTLXModified = isTLXModified
+        self.selectedFatigueCategories = selectedFatigueCategories
+        self.savedAt = savedAt
+    }
+}
+
+/// 설문 타입별 임시 저장 상태를 관리하는 중앙 저장소
+public final class SurveyDraftStore {
+    public static let shared = SurveyDraftStore()
+
+    private var drafts: [SurveyType: SurveyDraftState] = [:]
+    private let lock = NSLock()
+
+    private init() {}
+
+    /// 특정 설문 타입의 상태를 임시 저장
+    public func saveDraft(for type: SurveyType, draft: SurveyDraftState) {
+        lock.lock()
+        defer { lock.unlock() }
+        drafts[type] = draft
+        print("[SurveyDraftStore] [\(type.rawValue)] 임시 저장 완료 (단계: \(draft.currentStep), 시각: \(draft.savedAt))")
+    }
+
+    /// 특정 설문 타입의 임시 저장 상태 조회 (유지)
+    public func getDraft(for type: SurveyType) -> SurveyDraftState? {
+        lock.lock()
+        defer { lock.unlock() }
+        return drafts[type]
+    }
+
+    /// 특정 설문 타입의 임시 저장 상태 조회 및 제거
+    public func consumeDraft(for type: SurveyType) -> SurveyDraftState? {
+        lock.lock()
+        defer { lock.unlock() }
+        let d = drafts.removeValue(forKey: type)
+        if d != nil {
+            print("[SurveyDraftStore] [\(type.rawValue)] 임시 저장본 회수 및 제거 완료")
+        }
+        return d
+    }
+
+    /// 특정 설문 타입의 임시 저장 상태 명시적 삭제 (설문 완료 또는 건너뛰기 시 호출)
+    public func clearDraft(for type: SurveyType) {
+        lock.lock()
+        defer { lock.unlock() }
+        if drafts.removeValue(forKey: type) != nil {
+            print("[SurveyDraftStore] [\(type.rawValue)] 임시 저장본 삭제 완료")
+        }
+    }
+
+    /// 임시 저장본 존재 여부 확인
+    public func hasDraft(for type: SurveyType) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return drafts[type] != nil
+    }
 }
