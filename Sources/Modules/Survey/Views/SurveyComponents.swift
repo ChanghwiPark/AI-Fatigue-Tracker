@@ -952,6 +952,8 @@ public struct ScreenCaptureCardView: View {
 
 // MARK: - 3-3. 상황 질문 전용 주관식-캡처 대체 일체형 섹션 컴포넌트 (안 1. 인라인 통합형)
 public struct SituationInputOrCaptureSectionView: View {
+    public var title: String
+    public var placeholder: String
     @Binding public var situationAnswer: SubjectiveAnswer
     @Binding public var capturedImagePath: String?
     public var appName: String
@@ -967,13 +969,17 @@ public struct SituationInputOrCaptureSectionView: View {
     @State private var lastAttemptedThisField: Bool = false
 
     public init(
+        title: String = "어떤 작업을 하고 있나요?",
+        placeholder: String = "예: 관련 문헌 찾기, 논문 인트로 다듬기, 실험 데이터 분석",
         situationAnswer: Binding<SubjectiveAnswer>,
         capturedImagePath: Binding<String?>,
         appName: String = "AI 작업 화면",
-        fieldKey: String = "situation",
+        fieldKey: String = "task_purpose",
         onFocusChanged: ((Bool) -> Void)? = nil,
         onRetakeAreaCapture: (((@escaping (String?) -> Void) -> Void))? = nil
     ) {
+        self.title = title
+        self.placeholder = placeholder
         self._situationAnswer = situationAnswer
         self._capturedImagePath = capturedImagePath
         self.appName = appName
@@ -1011,8 +1017,8 @@ public struct SituationInputOrCaptureSectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             // 상단 헤더: 질문 타이틀만 깔끔하게 노출 ((필수) 표시 및 택 1 사족 텍스트 완전 배제)
             HStack(alignment: .firstTextBaseline) {
-                Text("지금 어떤 상황인가요?")
-                    .font(.system(size: 13.5, weight: .bold))
+                Text(title)
+                    .font(.system(size: 12.5, weight: .bold))
                     .foregroundColor(Config.Colors.ink)
 
                 Spacer()
@@ -1131,7 +1137,7 @@ public struct SituationInputOrCaptureSectionView: View {
                 // 2) 캡처 미첨부 상태: 안 1. 인라인 원터치 캡처 통합형 바
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .center, spacing: 6) {
-                        TextField("하던 일이나 AI에게 맡긴 일", text: $situationAnswer.customText, axis: .vertical)
+                        TextField(placeholder, text: $situationAnswer.customText, axis: .vertical)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12))
                             .lineLimit(1...4)
@@ -1865,6 +1871,8 @@ public struct TaskRoleDivisionSectionView: View {
             // 1. 사용 목적 (시작/중간/자발적 공통) - 전폭 배치
             if surveyType == .mid || surveyType == .diary {
                 SituationInputOrCaptureSectionView(
+                    title: "어떤 작업을 하고 있나요?",
+                    placeholder: "예: 관련 문헌 찾기, 논문 인트로 다듬기, 실험 데이터 분석",
                     situationAnswer: $taskPurpose,
                     capturedImagePath: $capturedImagePath,
                     appName: "AI 작업 화면",
@@ -1880,7 +1888,7 @@ public struct TaskRoleDivisionSectionView: View {
 
                     SubjectiveInputFieldView(
                         label: nil,
-                        placeholder: "예: 관련 문헌 찾기, 논문 읽은 문장 다듬기, 실험 데이터 분석",
+                        placeholder: "예: 관련 문헌 찾기, 논문 인트로 다듬기, 실험 데이터 분석",
                         fieldKey: "task_purpose",
                         chipOptions: [],
                         isSingleLine: false,

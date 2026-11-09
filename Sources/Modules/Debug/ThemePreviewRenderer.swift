@@ -2097,15 +2097,16 @@ public struct DesktopFullMockupView: View {
             VStack(alignment: .trailing, spacing: 0) {
                 switch sceneType {
                 case .midSurvey:
+                    // 초기 미입력 상태 (placeholder 노출)
                     SurveyPopupView(
                         surveyType: .mid,
                         sessionTitle: "AI 피로도 연구 분석",
                         aiTool: "ChatGPT",
                         snoozeCount: 0,
-                        initialSituation: "설문 체계 분석 및 초안 정리 중",
-                        initialFatigue: 3,
-                        initialAIFatigueImpact: 3,
-                        initialUsefulness: 4,
+                        initialSituation: nil,
+                        initialFatigue: nil,
+                        initialAIFatigueImpact: nil,
+                        initialUsefulness: nil,
                         initialCapturePath: nil,
                         maxContentHeight: 1200,
                         onHeightChanged: { _ in },
@@ -2189,9 +2190,9 @@ public struct DesktopFullMockupView: View {
                 case .diarySurvey:
                     VoluntaryRecordPopupView(
                         context: VoluntaryCaptureContext(appName: "ChatGPT"),
-                        initialSituation: "작업 화면 캡처 및 피로 순간 기록",
-                        initialFatigue: 4,
-                        initialAIFatigueImpact: 3,
+                        initialSituation: nil,
+                        initialFatigue: nil,
+                        initialAIFatigueImpact: nil,
                         maxContentHeight: 1200,
                         onHeightChanged: { _ in },
                         onCancel: {},
