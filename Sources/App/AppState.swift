@@ -11,6 +11,7 @@ public final class AppState: ObservableObject {
         static let participantName = "ai_fatigue_participant_name"
         static let hasCompletedOnboarding = "ai_fatigue_has_completed_onboarding"
         static let studyStartDate = "ai_fatigue_study_start_date"
+        static let isStudyCompletedBannerDismissed = "ai_fatigue_study_completed_banner_dismissed"
     }
 
     // MARK: - 참여자 식별 정보
@@ -22,12 +23,22 @@ public final class AppState: ObservableObject {
     @Published public private(set) var hasCompletedOnboarding: Bool
     /// 연구 시작 일자
     @Published public private(set) var studyStartDate: Date
+    /// 14일 연구 완료 감사 배너 닫힘(지움) 여부
+    @Published public var isStudyCompletedBannerDismissed: Bool {
+        didSet {
+            UserDefaults.standard.set(isStudyCompletedBannerDismissed, forKey: Keys.isStudyCompletedBannerDismissed)
+        }
+    }
 
     // MARK: - 현재 세션 및 메뉴 막대 상태 (임시 및 런타임)
+    /// 현재 활성 AI 앱 명칭 (예: "Gemini", "Claude")
+    @Published public var activeAIAppName: String? = nil
     /// 현재 감지된 AI 세션 앱 명칭 (예: "Claude, 터미널")
     @Published public var activeSessionAppNames: String? = nil
     /// 메뉴 막대 아이콘 옆에 표시할 경과 시간 문자열 (예: "1:12"). 세션이 없으면 nil
     @Published public var activeSessionDurationString: String? = nil
+    /// 가장 최근 응답한 피로도 점수 (1~5점, 없으면 nil)
+    @Published public var lastFatigueScore: Int? = nil
     /// 1시간 동안 팝업 끄기 활성화 여부
     @Published public var isPopupMutedForOneHour: Bool = false
     @Published public var popupMuteEndTime: Date? = nil
@@ -62,6 +73,14 @@ public final class AppState: ObservableObject {
             self.studyStartDate = today
         }
 
+        self.isStudyCompletedBannerDismissed = UserDefaults.standard.bool(forKey: Keys.isStudyCompletedBannerDismissed)
+
+        // 최근 기록된 피로도 점수 복원 (1~5)
+        let savedScore = UserDefaults.standard.integer(forKey: "ai_fatigue_last_score")
+        if (1...5).contains(savedScore) {
+            self.lastFatigueScore = savedScore
+        }
+
         // 이미 온보딩을 마친 참여자인 경우 로컬 DB 및 동기화 큐에 참여자 정보 기록
         if self.hasCompletedOnboarding && !self.participantName.isEmpty {
             LocalDatabase.shared.recordParticipant(
@@ -90,6 +109,16 @@ public final class AppState: ObservableObject {
         let end = calendar.startOfDay(for: studyEndDate)
         let diff = calendar.dateComponents([.day], from: today, to: end).day ?? 0
         return max(0, diff)
+    }
+
+    /// 14일 연구 완료 배너 닫기 (지우기)
+    public func dismissStudyCompletedBanner() {
+        self.isStudyCompletedBannerDismissed = true
+    }
+
+    /// 14일 연구 완료 배너 다시 표시 (테스트/초기화용)
+    public func resetStudyCompletedBanner() {
+        self.isStudyCompletedBannerDismissed = false
     }
 
     // MARK: - 이름 임시 저장 및 수정 (participant_id는 유지)
@@ -265,12 +294,28 @@ public final class AppState: ObservableObject {
         )
     }
 
+    /// 가장 최근 응답한 피로도 점수 갱신 및 영구 저장 (1~5점)
+    public func updateLastFatigueScore(_ score: Int) {
+        guard (1...5).contains(score) else { return }
+        if Thread.isMainThread {
+            self.lastFatigueScore = score
+            UserDefaults.standard.set(score, forKey: "ai_fatigue_last_score")
+        } else {
+            DispatchQueue.main.async {
+                self.lastFatigueScore = score
+                UserDefaults.standard.set(score, forKey: "ai_fatigue_last_score")
+            }
+        }
+    }
+
     // MARK: - 디버그/테스트용 세션 시뮬레이션
-    public func simulateSession(active: Bool, appNames: String = "Claude, 터미널", duration: String = "1:12") {
+    public func simulateSession(active: Bool, appNames: String = "Claude", duration: String = "1:12") {
         if active {
+            self.activeAIAppName = appNames
             self.activeSessionAppNames = appNames
             self.activeSessionDurationString = duration
         } else {
+            self.activeAIAppName = nil
             self.activeSessionAppNames = nil
             self.activeSessionDurationString = nil
         }

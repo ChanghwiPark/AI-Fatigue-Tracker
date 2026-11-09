@@ -20,10 +20,19 @@ public final class SettingsWindowManager: NSObject, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular)
         UserDefaults.standard.set("settings", forKey: "active_window_identifier")
 
-        if let existing = windowController, existing.window?.isVisible == true {
-            existing.window?.orderFrontRegardless()
-            existing.window?.makeKeyAndOrderFront(nil)
+        if let win = windowController?.window {
+            if win.isMiniaturized {
+                win.deminiaturize(nil)
+            }
+            win.orderFrontRegardless()
+            win.makeKeyAndOrderFront(nil)
+            win.makeFirstResponder(nil)
             NSApp.activate(ignoringOtherApps: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                win.orderFrontRegardless()
+                win.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
             return
         }
 
@@ -52,10 +61,18 @@ public final class SettingsWindowManager: NSObject, NSWindowDelegate {
         controller.showWindow(nil)
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     public func windowWillClose(_ notification: Notification) {
+        windowController = nil
         if UserDefaults.standard.string(forKey: "active_window_identifier") == "settings" {
             UserDefaults.standard.removeObject(forKey: "active_window_identifier")
         }

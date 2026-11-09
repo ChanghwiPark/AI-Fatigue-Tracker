@@ -18,22 +18,22 @@ public final class BrowserTracker {
 
     private init() {}
 
-    /// 브라우저 활성 탭 정보 추출 (AppleScript 1차 + Accessibility API 2차 폴백)
+    /// 브라우저 활성 탭 정보 추출 (AppleScript 1차 + Accessibility API 2차 폴백 + 사이드패널 검사)
     public func fetchActiveTab(for bundleId: String, pid: pid_t? = nil) -> TabInfo? {
+        let targetPid: pid_t? = pid ?? NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first?.processIdentifier
+
         // 1. AppleScript 기반 정밀 추출 (URL, 탭 제목, 탭 수 등)
+        var tabInfo: TabInfo? = nil
         if let scriptName = Config.Detection.supportedBrowsers[bundleId] {
-            if let tabInfo = fetchViaAppleScript(bundleId: bundleId, scriptName: scriptName) {
-                return tabInfo
-            }
+            tabInfo = fetchViaAppleScript(bundleId: bundleId, scriptName: scriptName)
         }
 
         // 2. AppleScript 미지원 브라우저(Firefox, Zen 등) 또는 스크립트 실패/지연 시 Accessibility API 폴백
-        let targetPid: pid_t? = pid ?? NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first?.processIdentifier
-        if let p = targetPid, let axInfo = fetchViaAccessibility(bundleId: bundleId, pid: p) {
-            return axInfo
+        if tabInfo == nil, let p = targetPid {
+            tabInfo = fetchViaAccessibility(bundleId: bundleId, pid: p)
         }
 
-        return nil
+        return tabInfo
     }
 
     /// 1차: AppleScript를 통한 브라우저 탭 정보 추출
@@ -132,8 +132,18 @@ public final class BrowserTracker {
         let cleanTitle = Self.cleanBrowserTabTitle(rawTitle)
         let sanitizedURL = rawURL.isEmpty ? "" : sanitizeURL(rawURL)
 
-        let (isAI, aiTool) = rawURL.isEmpty ? checkWebAIFromTitle(cleanTitle) : checkWebAI(url: rawURL)
-        let (threadKey, threadTitle) = extractThreadInfo(url: rawURL, rawTitle: cleanTitle, isAI: isAI, aiTool: aiTool)
+        let isAuth = Self.isAuthOrLoginPage(url: rawURL, title: cleanTitle)
+        let isDiaApp = bundleId.contains("dia") || scriptName.lowercased() == "dia"
+        let (isAI, aiTool): (Bool, String?) = {
+            if isAuth { return (false, nil) }
+            if isDiaApp {
+                if rawTitle.contains("Dia /") || rawTitle.hasPrefix("Dia") || rawURL.hasPrefix("dia://") || rawURL.isEmpty {
+                    return (true, "Dia")
+                }
+            }
+            return rawURL.isEmpty ? checkWebAIFromTitle(cleanTitle) : checkWebAI(url: rawURL)
+        }()
+        let (threadKey, threadTitle) = isAuth ? (nil, nil) : extractThreadInfo(url: rawURL, rawTitle: cleanTitle, isAI: isAI, aiTool: aiTool)
 
         return TabInfo(
             url: sanitizedURL,
@@ -192,8 +202,18 @@ public final class BrowserTracker {
 
         let sanitizedURL = extractedURL.isEmpty ? "" : sanitizeURL(extractedURL)
 
-        let (isAI, aiTool) = !extractedURL.isEmpty ? checkWebAI(url: extractedURL) : checkWebAIFromTitle(cleanTitle)
-        let (threadKey, threadTitle) = extractThreadInfo(
+        let isAuth = Self.isAuthOrLoginPage(url: extractedURL, title: cleanTitle)
+        let isDiaApp = bundleId.contains("dia")
+        let (isAI, aiTool): (Bool, String?) = {
+            if isAuth { return (false, nil) }
+            if isDiaApp {
+                if rawWinTitle.contains("Dia /") || rawWinTitle.hasPrefix("Dia") || extractedURL.hasPrefix("dia://") || extractedURL.isEmpty {
+                    return (true, "Dia")
+                }
+            }
+            return !extractedURL.isEmpty ? checkWebAI(url: extractedURL) : checkWebAIFromTitle(cleanTitle)
+        }()
+        let (threadKey, threadTitle) = isAuth ? (nil, nil) : extractThreadInfo(
             url: extractedURL,
             rawTitle: cleanTitle,
             isAI: isAI,
@@ -212,7 +232,7 @@ public final class BrowserTracker {
         )
     }
 
-    /// 브라우저 윈도우 UI 내부의 주소창(AXTextField) 검색
+    // MARK: - 3. 브라우저 윈도우 UI 내부의 주소창(AXTextField) 검색
     private func findURLFromAddressField(in element: AXUIElement) -> String? {
         var childrenVal: AnyObject?
         guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenVal) == .success,
@@ -289,7 +309,7 @@ public final class BrowserTracker {
             }
         }
 
-        for p in ["Safari — ", "Firefox — ", "Arc — "] {
+        for p in ["Safari — ", "Firefox — ", "Arc — ", "Dia / ", "Dia /"] {
             if t.hasPrefix(p) {
                 t = String(t.dropFirst(p.count)).trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -300,6 +320,16 @@ public final class BrowserTracker {
 
     /// 제목 키워드 기반 AI 판별 (URL이 없거나 AX 폴백 시 사용)
     public func checkWebAIFromTitle(_ title: String) -> (isAI: Bool, aiTool: String?) {
+        // 로그인/인증 페이지 제목은 AI 도구명이 포함되어 있더라도 AI 세션으로 분류하지 않음
+        if Self.isAuthOrLoginPage(url: nil, title: title) {
+            return (false, nil)
+        }
+
+        // 0-1. 수동 시작된 활성 웹 세션 제목 검사
+        if let manualTool = SessionManager.shared.manualActiveTool(for: "", appName: "", windowTitle: title, url: nil) {
+            return (true, manualTool)
+        }
+
         let lower = title.lowercased()
 
         // 0. 사용자 직접 등록 커스텀 AI 도메인/앱 명칭 대조
@@ -309,7 +339,18 @@ public final class BrowserTracker {
             }
         }
 
+        // 비AI 사이트(유튜브, 구글 검색, 노션, 구글 닥스 등)의 제목에 AI 키워드가 언급된 경우 오탐 배제
+        let nonAISiteSuffixes = [
+            "youtube", "google 검색", "google search", "google docs", "google drive",
+            "google sheets", "google slides", "notion", "naver", "네이버", "wikipedia", "위키백과", "github"
+        ]
+        if nonAISiteSuffixes.contains(where: { lower.contains($0) }) {
+            return (false, nil)
+        }
+
         let keywords: [(kw: String, tool: String)] = [
+            ("dia /", "Dia"),
+            ("dia assistant", "Dia"),
             ("chatgpt", "ChatGPT"),
             ("claude", "Claude"),
             ("gemini", "Gemini"),
@@ -338,6 +379,7 @@ public final class BrowserTracker {
     /// AI 웹 URL 및 탭 제목으로부터 스레드 식별키(threadKey) 및 제목(threadTitle) 추출
     public func extractThreadInfo(url urlString: String, rawTitle: String, isAI: Bool, aiTool: String?) -> (threadKey: String?, threadTitle: String?) {
         guard isAI else { return (nil, nil) }
+        if Self.isAuthOrLoginPage(url: urlString, title: rawTitle) { return (nil, nil) }
 
         let t = Self.cleanBrowserTabTitle(rawTitle)
         var title = t
@@ -352,6 +394,11 @@ public final class BrowserTracker {
             }
         }
         let cleanTitle = title.isEmpty ? (aiTool ?? "Web AI") : title
+
+        if isAI && (aiTool == "Dia" || aiTool?.lowercased().contains("dia") == true) {
+            let threadTitle = cleanTitle.isEmpty ? "Dia" : cleanTitle
+            return ("dia_\(threadTitle)", threadTitle)
+        }
 
         if let url = URL(string: urlString), let host = url.host?.lowercased() {
             let path = url.path
@@ -376,17 +423,112 @@ public final class BrowserTracker {
         if Config.Detection.urlMode == "domain" {
             return url.host ?? urlString
         } else {
-            // "full": 쿼리 스트링(?...)과 프래그먼트(#...) 제외한 전체 주소
+            // "full": 프래그먼트(#...)만 제외하고 실제 상세 주소(경로 및 쿼리) 보존
             var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            components?.query = nil
             components?.fragment = nil
             return components?.string ?? urlString
         }
     }
 
+    /// 로그인, 회원가입, 계정 인증(SSO, OAuth 등) 페이지 판별 헬퍼
+    public static func isAuthOrLoginPage(url: String?, title: String) -> Bool {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        // 1. 창/탭 제목(Title) 기반 검사
+        let authTitleKeywords = [
+            "sign in", "signin", "sign-in", "log in", "login", "log-in",
+            "로그인", "회원가입", "계정 만들기", "계정 생성", "인증", "본인 인증",
+            "sign up", "signup", "sign-up", "create account", "create your account",
+            "welcome to claude", "welcome to chatgpt", "welcome to openai",
+            "get started", "시작하기", "authenticate", "authentication", "sso",
+            "continue with google", "continue with apple", "continue with email",
+            "verify your email", "check your email"
+        ]
+
+        for kw in authTitleKeywords {
+            if t == kw || t.hasPrefix(kw) || t.hasSuffix(kw) ||
+               t.contains(" \(kw)") || t.contains("\(kw) ") ||
+               t.contains("-\(kw)") || t.contains("·\(kw)") || t.contains("|\(kw)") {
+                return true
+            }
+        }
+
+        // 2. URL 경로 및 도메인 기반 검사
+        if let urlStr = url, !urlStr.isEmpty {
+            let lowerURL = urlStr.lowercased()
+
+            // 직접 문자열 매칭 (URL 파싱 불완전성 또는 쿼리 파라미터 내 엔드포인트 대비)
+            if lowerURL.contains("/login") || lowerURL.contains("/signin") || lowerURL.contains("/sign-in") ||
+               lowerURL.contains("/log-in") || lowerURL.contains("/signup") || lowerURL.contains("/sign-up") ||
+               lowerURL.contains("/oauth") || lowerURL.contains("/authorize") || lowerURL.contains("/authenticate") ||
+               lowerURL.contains("reauth=1") || lowerURL.contains("prompt=login") || lowerURL.contains("action=signin") ||
+               lowerURL.contains("action=signup") || lowerURL.contains("response_type=code") ||
+               lowerURL.contains("returnto=/oauth") || lowerURL.contains("returnto=%2foauth") {
+                return true
+            }
+
+            let normalizedURLStr = (urlStr.hasPrefix("http://") || urlStr.hasPrefix("https://") || urlStr.hasPrefix("dia://"))
+                ? urlStr
+                : "https://\(urlStr)"
+
+            if let urlObj = URL(string: normalizedURLStr) {
+                let path = urlObj.path.lowercased()
+                let host = urlObj.host?.lowercased() ?? ""
+                let query = urlObj.query?.lowercased() ?? ""
+
+                // 전용 인증 호스트
+                let authHosts = [
+                    "auth0.com", "clerk.dev", "clerk.com",
+                    "accounts.google.com", "appleid.apple.com",
+                    "login.microsoftonline.com", "auth.openai.com"
+                ]
+                if authHosts.contains(where: { host.contains($0) }) {
+                    return true
+                }
+
+                // URL 경로 내 인증/로그인 엔드포인트
+                let authPathKeywords = [
+                    "/login", "/signin", "/sign-in", "/log-in", "/log_in", "/sign_in",
+                    "/signup", "/sign-up", "/register", "/join",
+                    "/auth", "/oauth", "/sso", "/authorize", "/authenticate", "/reauth"
+                ]
+                for kw in authPathKeywords {
+                    if path == kw || path.hasPrefix("\(kw)/") || path.hasSuffix(kw) || path.contains(kw) {
+                        return true
+                    }
+                }
+
+                // 쿼리 파라미터 인증 키워드
+                let authQueries = ["prompt=login", "auth=", "action=signin", "action=signup", "mode=login", "response_type=code", "reauth="]
+                for q in authQueries {
+                    if query.contains(q) {
+                        return true
+                    }
+                }
+            }
+        }
+
+        return false
+    }
+
     /// AI 웹 도메인 목록, 커스텀 사내 도메인, 브라우저 확장 및 사내 AI 패턴과 대조하여 AI 여부 및 도구명 판별
     public func checkWebAI(url urlString: String) -> (isAI: Bool, aiTool: String?) {
-        // 1. 크롬 익스텐션 전용 URL 감지 (chrome-extension://...)
+        // 0. 로그인, 회원가입, 계정 인증 페이지는 AI 웹 도메인이더라도 AI 세션으로 분류하지 않음
+        if Self.isAuthOrLoginPage(url: urlString, title: "") {
+            return (false, nil)
+        }
+
+        // 0-1. 수동 시작된 활성 웹 세션 검사 (사용자가 수동 시작한 웹 창/탭)
+        if let manualTool = SessionManager.shared.manualActiveTool(for: "", appName: "", windowTitle: "", url: urlString) {
+            return (true, manualTool)
+        }
+
+        // 1. Dia 브라우저 전용 스킴 (dia://...)
+        if urlString.hasPrefix("dia://") {
+            return (true, "Dia")
+        }
+
+        // 2. 크롬 익스텐션 전용 URL 감지 (chrome-extension://...)
         if urlString.hasPrefix("chrome-extension://") {
             return (true, "브라우저 AI 확장")
         }

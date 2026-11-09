@@ -12,22 +12,26 @@ public final class ConfigManager: ObservableObject {
         static let midSurveyIntervalMin = "cfg_mid_survey_min"
         static let midSurveyIntervalMax = "cfg_mid_survey_max"
         static let muteDuration = "cfg_mute_duration"
+        static let isDailyNudgeEnabled = "cfg_is_daily_nudge_enabled"
         static let dailyNudgeHour = "cfg_daily_nudge_hour"
         static let dailyNudgeMinute = "cfg_daily_nudge_minute"
         static let idleThreshold = "cfg_idle_threshold"
         static let popupWidth = "cfg_popup_width"
         static let highFatigueThreshold = "cfg_high_fatigue_threshold"
         static let highUsefulnessThreshold = "cfg_high_usefulness_threshold"
+        static let countWebAIAsSession = "cfg_count_web_ai_as_session"
     }
 
     // MARK: - 표준 연구 기본값 (Research Defaults)
     public struct Defaults {
-        public static let minPopupCooldown: TimeInterval = 30 * 60       // 30분
+        public static let minPopupCooldown: TimeInterval = 0             // 0분 (쿨다운 해제: 즉시 발생 가능)
+        public static let countWebAIAsSession: Bool = true               // 웹 AI 세션 시작 기본 허용
         public static let autoDismissDuration: TimeInterval = 5 * 60     // 5분
-        public static let snoozeDuration: TimeInterval = 10 * 60         // 10분
-        public static let midSurveyIntervalMin: TimeInterval = 60 * 60   // 60분
-        public static let midSurveyIntervalMax: TimeInterval = 120 * 60  // 120분 (표준: 60~120분 무작위 반복)
+        public static let snoozeDuration: TimeInterval = 5 * 60          // 5분 (표준)
+        public static let midSurveyIntervalMin: TimeInterval = 20 * 60   // 20분
+        public static let midSurveyIntervalMax: TimeInterval = 40 * 60   // 40분 (표준: 20~40분 무작위 반복)
         public static let muteDuration: TimeInterval = 60 * 60           // 60분
+        public static let isDailyNudgeEnabled: Bool = false              // 미기록 넛지 기본 비활성화 (디폴트 꺼짐)
         public static let dailyNudgeHour: Int = 18                       // 18시
         public static let dailyNudgeMinute: Int = 30                     // 30분
         public static let idleThreshold: TimeInterval = 2 * 60           // 2분
@@ -39,11 +43,13 @@ public final class ConfigManager: ObservableObject {
     // MARK: - 빠른 테스트 모드 기본값 (Fast Debug Preset)
     public struct FastTestDefaults {
         public static let minPopupCooldown: TimeInterval = 0             // 0초 (즉시 반복 가능)
+        public static let countWebAIAsSession: Bool = true
         public static let autoDismissDuration: TimeInterval = 30         // 30초
         public static let snoozeDuration: TimeInterval = 10              // 10초
         public static let midSurveyIntervalMin: TimeInterval = 60        // 1분
         public static let midSurveyIntervalMax: TimeInterval = 120       // 2분
         public static let muteDuration: TimeInterval = 5 * 60            // 5분
+        public static let isDailyNudgeEnabled: Bool = false
         public static let dailyNudgeHour: Int = 18
         public static let dailyNudgeMinute: Int = 30
         public static let idleThreshold: TimeInterval = 10               // 10초
@@ -55,6 +61,10 @@ public final class ConfigManager: ObservableObject {
     // MARK: - 동적 프로퍼티 (UserDefaults 영구 저장)
     @Published public var minPopupCooldown: TimeInterval {
         didSet { UserDefaults.standard.set(minPopupCooldown, forKey: Keys.minPopupCooldown) }
+    }
+
+    @Published public var countWebAIAsSession: Bool {
+        didSet { UserDefaults.standard.set(countWebAIAsSession, forKey: Keys.countWebAIAsSession) }
     }
 
     @Published public var autoDismissDuration: TimeInterval {
@@ -75,6 +85,10 @@ public final class ConfigManager: ObservableObject {
 
     @Published public var muteDuration: TimeInterval {
         didSet { UserDefaults.standard.set(muteDuration, forKey: Keys.muteDuration) }
+    }
+
+    @Published public var isDailyNudgeEnabled: Bool {
+        didSet { UserDefaults.standard.set(isDailyNudgeEnabled, forKey: Keys.isDailyNudgeEnabled) }
     }
 
     @Published public var dailyNudgeHour: Int {
@@ -105,27 +119,45 @@ public final class ConfigManager: ObservableObject {
         // UserDefaults에서 로드하거나 표준 기본값 사용
         let ud = UserDefaults.standard
 
-        self.minPopupCooldown = ud.object(forKey: Keys.minPopupCooldown) != nil
+        let savedCooldown = ud.object(forKey: Keys.minPopupCooldown) != nil
             ? ud.double(forKey: Keys.minPopupCooldown)
             : Defaults.minPopupCooldown
+        let resolvedCooldown = (savedCooldown == 30 * 60) ? Defaults.minPopupCooldown : savedCooldown
+        self.minPopupCooldown = resolvedCooldown
+        if savedCooldown != resolvedCooldown {
+            ud.set(resolvedCooldown, forKey: Keys.minPopupCooldown)
+        }
+
+        self.countWebAIAsSession = ud.object(forKey: Keys.countWebAIAsSession) != nil
+            ? ud.bool(forKey: Keys.countWebAIAsSession)
+            : Defaults.countWebAIAsSession
 
         self.autoDismissDuration = ud.object(forKey: Keys.autoDismissDuration) != nil
             ? ud.double(forKey: Keys.autoDismissDuration)
             : Defaults.autoDismissDuration
 
-        self.snoozeDuration = ud.object(forKey: Keys.snoozeDuration) != nil
+        let savedSnooze = ud.object(forKey: Keys.snoozeDuration) != nil
             ? ud.double(forKey: Keys.snoozeDuration)
             : Defaults.snoozeDuration
+        // 기존 10분(600초) 기본값을 사용 중이었던 경우 새 표준 5분(300초)으로 자동 마이그레이션
+        let resolvedSnooze = (savedSnooze == 10 * 60) ? Defaults.snoozeDuration : savedSnooze
+        self.snoozeDuration = resolvedSnooze
 
-        self.midSurveyIntervalMin = ud.object(forKey: Keys.midSurveyIntervalMin) != nil
+        let savedMidMin = ud.object(forKey: Keys.midSurveyIntervalMin) != nil
             ? ud.double(forKey: Keys.midSurveyIntervalMin)
             : Defaults.midSurveyIntervalMin
+        // 기존 60분(3600초) 기본값을 사용 중이었던 경우 새 표준 20분(1200초)으로 자동 마이그레이션
+        let resolvedMidMin = (savedMidMin == 60 * 60) ? Defaults.midSurveyIntervalMin : savedMidMin
+        self.midSurveyIntervalMin = resolvedMidMin
+        if savedMidMin != resolvedMidMin {
+            ud.set(resolvedMidMin, forKey: Keys.midSurveyIntervalMin)
+        }
 
         let savedMidMax = ud.object(forKey: Keys.midSurveyIntervalMax) != nil
             ? ud.double(forKey: Keys.midSurveyIntervalMax)
             : Defaults.midSurveyIntervalMax
-        // 기존 90분(5400초) 표준을 사용 중이었던 경우 새 표준 120분(7200초)으로 자동 상향
-        let resolvedMidMax = (savedMidMax == 90 * 60) ? Defaults.midSurveyIntervalMax : savedMidMax
+        // 기존 120분(7200초) 또는 90분(5400초) 표준을 사용 중이었던 경우 새 표준 40분(2400초)으로 자동 마이그레이션
+        let resolvedMidMax = (savedMidMax == 120 * 60 || savedMidMax == 90 * 60) ? Defaults.midSurveyIntervalMax : savedMidMax
         self.midSurveyIntervalMax = resolvedMidMax
         if savedMidMax != resolvedMidMax {
             ud.set(resolvedMidMax, forKey: Keys.midSurveyIntervalMax)
@@ -134,6 +166,10 @@ public final class ConfigManager: ObservableObject {
         self.muteDuration = ud.object(forKey: Keys.muteDuration) != nil
             ? ud.double(forKey: Keys.muteDuration)
             : Defaults.muteDuration
+
+        self.isDailyNudgeEnabled = ud.object(forKey: Keys.isDailyNudgeEnabled) != nil
+            ? ud.bool(forKey: Keys.isDailyNudgeEnabled)
+            : Defaults.isDailyNudgeEnabled
 
         self.dailyNudgeHour = ud.object(forKey: Keys.dailyNudgeHour) != nil
             ? ud.integer(forKey: Keys.dailyNudgeHour)
@@ -208,7 +244,7 @@ public final class ConfigManager: ObservableObject {
         minPopupCooldown = 60                 // 30분 쿨다운 -> 1분 (60초)
         midSurveyIntervalMin = 120            // 60분 간격 -> 2분 (120초)
         midSurveyIntervalMax = 240            // 120분 간격 -> 4분 (240초)
-        snoozeDuration = 20                   // 10분 스누즈 -> 20초
+        snoozeDuration = 20                   // 5분 스누즈 -> 20초
         muteDuration = 120                    // 60분 팝업 끄기 -> 2분 (120초)
         autoDismissDuration = 10              // 5분 타임아웃 -> 10초
         idleThreshold = 10                    // 2분 유휴 판정 -> 10초
@@ -228,6 +264,7 @@ public final class ConfigManager: ObservableObject {
         midSurveyIntervalMin = Defaults.midSurveyIntervalMin
         midSurveyIntervalMax = Defaults.midSurveyIntervalMax
         muteDuration = Defaults.muteDuration
+        isDailyNudgeEnabled = Defaults.isDailyNudgeEnabled
         dailyNudgeHour = Defaults.dailyNudgeHour
         dailyNudgeMinute = Defaults.dailyNudgeMinute
         idleThreshold = Defaults.idleThreshold
@@ -243,6 +280,7 @@ public final class ConfigManager: ObservableObject {
         midSurveyIntervalMin = FastTestDefaults.midSurveyIntervalMin
         midSurveyIntervalMax = FastTestDefaults.midSurveyIntervalMax
         muteDuration = FastTestDefaults.muteDuration
+        isDailyNudgeEnabled = FastTestDefaults.isDailyNudgeEnabled
         dailyNudgeHour = FastTestDefaults.dailyNudgeHour
         dailyNudgeMinute = FastTestDefaults.dailyNudgeMinute
         idleThreshold = FastTestDefaults.idleThreshold
@@ -257,6 +295,7 @@ public final class ConfigManager: ObservableObject {
         let nextMinute = Date().addingTimeInterval(60)
         dailyNudgeHour = calendar.component(.hour, from: nextMinute)
         dailyNudgeMinute = calendar.component(.minute, from: nextMinute)
+        isDailyNudgeEnabled = true // 테스트 트리거 시 활성화
     }
 
     /// 초 단위를 'N분' 또는 'N분 N초' 또는 'N초' 형태로 가독성 있게 변환

@@ -10,6 +10,8 @@ public final class SurveyWindowManager: ObservableObject {
     private var targetX: CGFloat = 0
     private var isSlideInComplete: Bool = false
     public private(set) var isDismissing: Bool = false
+    private var lastShowTime: Date? = nil
+    private var lastShowType: SurveyType? = nil
 
     private init() {}
 
@@ -17,13 +19,25 @@ public final class SurveyWindowManager: ObservableObject {
     public func showPopup(
         type: SurveyType,
         session: AISession? = nil,
+        snoozeCount: Int = 0,
         onAction: @escaping (SurveyAction, [String: String]?) -> Void
     ) {
         DispatchQueue.main.async {
+            let now = Date()
+            // 0.5초 이내 동일 타입 팝업 중복 생성 요청 방지
+            if let lastTime = self.lastShowTime, self.lastShowType == type, now.timeIntervalSince(lastTime) < 0.5 {
+                print("[SurveyWindowManager] 0.5초 이내 동일 타입(\(type)) 팝업 중복 생성 차단")
+                return
+            }
+            self.lastShowTime = now
+            self.lastShowType = type
             self.isDismissing = false
-            // 이미 열려 있는 창이 있다면 모두 닫고 새로 엽니다.
+
+            // 이미 열려 있는 창이 있다면 즉시 닫고 완전히 정리합니다.
             for w in NSApp.windows where w is SurveyPanel {
                 w.orderOut(nil)
+                w.alphaValue = 0.0
+                w.close()
             }
             self.currentPanel = nil
 
@@ -32,8 +46,8 @@ public final class SurveyWindowManager: ObservableObject {
             let visibleFrame = screen.visibleFrame
             let screenFrame = screen.frame
 
-            // mid 및 nudge(07장면) 팝업은 340px, 그 외는 372px
-            let targetWidth: CGFloat = (type == .mid || type == .nudge ? Config.Survey.popupMidWidth : Config.Survey.popupDefaultWidth)
+            // nudge(07장면) 팝업은 340px, 그 외(start, mid, end, diary)는 372px
+            let targetWidth: CGFloat = (type == .nudge ? Config.Survey.popupMidWidth : Config.Survey.popupDefaultWidth)
             let rightMargin: CGFloat = 14.0
             let topMarginBelowMenuBar: CGFloat = 12.0
             let bottomMargin: CGFloat = 14.0
@@ -51,11 +65,12 @@ public final class SurveyWindowManager: ObservableObject {
 
             let estimatedContentHeight: CGFloat = {
                 switch type {
-                case .mid: return 195.0
-                case .start: return 310.0
+                case .mid: return 270.0
+                case .start: return 220.0
                 case .end: return 480.0
                 case .diary: return 220.0
                 case .nudge: return 110.0
+                case .followUp: return 340.0
                 }
             }()
             let initialHeight = min(estimatedContentHeight + chromeOverhead, maxAvailableHeight)
@@ -64,9 +79,32 @@ public final class SurveyWindowManager: ObservableObject {
                 surveyType: type,
                 sessionTitle: session?.title,
                 aiTool: session?.toolName,
+                snoozeCount: snoozeCount,
                 maxContentHeight: maxScrollHeight,
                 onHeightChanged: { [weak self] newTotalHeight in
                     self?.updateHeight(newTotalHeight)
+                },
+                onRetakeAreaCapture: { [weak self] callback in
+                    guard let self = self else { return }
+                    let panelToRestore = (self.currentPanel?.isVisible == true ? self.currentPanel : nil) ?? NSApp.windows.compactMap({ $0 as? SurveyPanel }).first(where: { $0.isVisible }) ?? self.currentPanel
+                    panelToRestore?.orderOut(nil)
+                    VoluntaryRecordService.shared.retakeAreaCapture { newImagePath in
+                        DispatchQueue.main.async {
+                            NSApp.activate(ignoringOtherApps: true)
+                            if let p = panelToRestore {
+                                if let curScreen = NSScreen.main ?? NSScreen.screens.first {
+                                    let screenFrame = curScreen.visibleFrame
+                                    let targetX = screenFrame.maxX - p.frame.width - 20
+                                    let targetY = screenFrame.maxY - p.frame.height - 12
+                                    p.setFrameOrigin(NSPoint(x: targetX, y: targetY))
+                                }
+                                p.alphaValue = 1.0
+                                p.makeKeyAndOrderFront(nil)
+                                p.orderFrontRegardless()
+                            }
+                            callback(newImagePath)
+                        }
+                    }
                 },
                 onAction: { action, payload in
                     onAction(action, payload)
@@ -166,7 +204,9 @@ public final class SurveyWindowManager: ObservableObject {
 
             self.isDismissing = true
             print("[SurveyWindowManager] 팝업 닫기(Slide-out) 애니메이션 시작 (panel: \(panel))")
-            SpeechInputManager.shared.stopRecording()
+            if SpeechInputManager.shared.isRecording {
+                SpeechInputManager.shared.stopRecording()
+            }
 
             // 안전 타이머: 애니메이션 콜백 누락 시에도 0.5초 뒤 자동 잠금 해제
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -200,7 +240,7 @@ public final class SurveyWindowManager: ObservableObject {
         }
     }
 
-    /// 자발적 피로 기록(Scene 06 - ⌥⌘S 또는 메뉴 막대 "지금 피로 기록하기") 팝업 띄우기
+    /// 자발적 피로 기록(Scene 06 - ⌥⌘S 또는 메뉴 막대 "AI 피로 기록하기") 팝업 띄우기
     public func showVoluntaryPopup(context: VoluntaryCaptureContext) {
         DispatchQueue.main.async {
             self.isDismissing = false
@@ -254,18 +294,30 @@ public final class SurveyWindowManager: ObservableObject {
                 },
                 onRetakeAreaCapture: { [weak self] callback in
                     guard let self = self else { return }
-                    let activePanel = (self.currentPanel?.isVisible == true ? self.currentPanel : nil) ?? NSApp.windows.compactMap({ $0 as? SurveyPanel }).first(where: { $0.isVisible })
-                    print("[VoluntaryRecord] 영역 캡처 시작 (패널 숨김, activePanel: \(String(describing: activePanel)))")
-                    activePanel?.orderOut(nil)
+                    let panelToRestore = (self.currentPanel?.isVisible == true ? self.currentPanel : nil) ?? NSApp.windows.compactMap({ $0 as? SurveyPanel }).first(where: { $0.isVisible }) ?? self.currentPanel
+                    print("[VoluntaryRecord] 영역 캡처 시작 (패널 숨김, panelToRestore: \(String(describing: panelToRestore)))")
+                    panelToRestore?.orderOut(nil)
                     VoluntaryRecordService.shared.retakeAreaCapture { newImagePath in
-                        activePanel?.alphaValue = 1.0
-                        activePanel?.orderFrontRegardless()
-                        if let newPath = newImagePath {
-                            print("[VoluntaryRecord] 새 영역 캡처 적용: \(newPath)")
-                        } else {
-                            print("[VoluntaryRecord] 영역 캡처 취소됨 -> 기존 패널 복원")
+                        DispatchQueue.main.async {
+                            NSApp.activate(ignoringOtherApps: true)
+                            if let p = panelToRestore {
+                                if let curScreen = NSScreen.main ?? NSScreen.screens.first {
+                                    let screenFrame = curScreen.visibleFrame
+                                    let targetX = screenFrame.maxX - p.frame.width - 20
+                                    let targetY = screenFrame.maxY - p.frame.height - 12
+                                    p.setFrameOrigin(NSPoint(x: targetX, y: targetY))
+                                }
+                                p.alphaValue = 1.0
+                                p.makeKeyAndOrderFront(nil)
+                                p.orderFrontRegardless()
+                            }
+                            if let newPath = newImagePath {
+                                print("[VoluntaryRecord] 새 영역 캡처 적용: \(newPath)")
+                            } else {
+                                print("[VoluntaryRecord] 영역 캡처 취소됨 -> 기존 패널 복원")
+                            }
+                            callback(newImagePath)
                         }
-                        callback(newImagePath)
                     }
                 },
                 onCancel: { [weak self] in
@@ -286,6 +338,12 @@ public final class SurveyWindowManager: ObservableObject {
                     )
                     SurveyLogStore.shared.addEvent(event)
 
+                    // 피로도 2점(조금) 이상인 경우 30분 뒤 후속 설문(.followUp) 예약
+                    if let fStr = payload["fatigue_score"], let score = Int(fStr), score >= 2 {
+                        let linkedSession = SessionManager.shared.currentSession
+                        SurveyScheduler.shared.scheduleFatigueFollowUp(session: linkedSession)
+                    }
+
                     // 2. 캡처 이미지 Supabase Storage 비동기 업로드 시도
                     if let imgPath = finalContext.localImagePath {
                         SupabaseStorageUploader.shared.uploadScreenshot(localPath: imgPath) { success, storagePath in
@@ -293,9 +351,9 @@ public final class SurveyWindowManager: ObservableObject {
                         }
                     }
 
-                    // 3. 팝업 창 닫기 및 "저장됨" 토스트 알림 띄우기
+                    // 3. 팝업 창 닫기 및 "저장 완료" 미니멀 캡슐 알림 띄우기
                     self?.dismissPopup {
-                        SaveConfirmationToast.shared.show(message: "저장됨", detail: "피로 순간 기록이 안전하게 저장되었습니다.")
+                        SaveConfirmationToast.shared.show(message: "저장 완료")
                     }
                 }
             )

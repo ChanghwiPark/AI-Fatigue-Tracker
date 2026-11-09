@@ -9,28 +9,37 @@ public struct MenuBarView: View {
     @ObservedObject var sessionManager: SessionManager = .shared
     @ObservedObject var surveyLogStore: SurveyLogStore = .shared
 
+    private let panelWidth: CGFloat
+    private let showDebugMenu: Bool
     @State private var currentTime = Date()
     private let countdownTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
-    public init() {}
+    public init(
+        panelWidth: CGFloat = Config.Survey.menuBarDefaultWidth,
+        showDebugMenu: Bool = Config.DebugConfig.showDebugMonitor
+    ) {
+        self.panelWidth = panelWidth
+        self.showDebugMenu = showDebugMenu
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // 1. 연구 완료 감사 배너 (14일 경과 시에도 상태 줄 및 기록 버튼과 함께 표시)
-            if appState.isStudyCompleted {
+            // 1. 연구 완료 감사 배너 (14일 경과 시에도 상태 줄 및 기록 버튼과 함께 표시, 닫기 가능)
+            if appState.isStudyCompleted && !appState.isStudyCompletedBannerDismissed {
                 studyCompletedBanner
                     .padding(.horizontal, 10)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             // 2. 실시간 상태 줄
             statusHeaderView
                 .padding(.horizontal, 14)
-                .padding(.top, appState.isStudyCompleted ? 6 : 12)
+                .padding(.top, (appState.isStudyCompleted && !appState.isStudyCompletedBannerDismissed) ? 4 : 12)
                 .padding(.bottom, 10)
 
-            // 3. "지금 피로 기록하기" 주요 액션 버튼 (계속해서 사용 가능)
+            // 3. "AI 피로 기록하기" 주요 액션 버튼 (계속해서 사용 가능)
             recordNowButton
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
@@ -65,7 +74,7 @@ public struct MenuBarView: View {
                 appState.togglePauseRecording15Min()
             }
 
-            if Config.DebugConfig.showDebugMonitor || NSEvent.modifierFlags.contains(.option) {
+            if showDebugMenu || NSEvent.modifierFlags.contains(.option) {
                 bottomActionRow(
                     title: "디버그 모니터",
                     icon: "waveform.path.ecg"
@@ -103,7 +112,7 @@ public struct MenuBarView: View {
             }
             .padding(.bottom, 8)
         }
-        .frame(width: 320)
+        .frame(width: panelWidth)
         .background(Config.Colors.popupBg)
         .onReceive(countdownTimer) { _ in
             if appState.isPopupMutedForOneHour || appState.isRecordingPaused15Min {
@@ -182,66 +191,153 @@ public struct MenuBarView: View {
         }
     }
 
-    // MARK: - 0. 연구 종료 감사 배너
+    // MARK: - 0. 연구 종료 감사 배너 (닫기/지우기 지원 - 우측 상단 소형 X 및 여유 있는 위아래 간격)
     private var studyCompletedBanner: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 9) {
             Text("☺️")
                 .font(.system(size: 16))
-            VStack(alignment: .leading, spacing: 1) {
-                Text("참여해주셔서 감사합니다 ☺️")
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("참여해주셔서 감사합니다 🧡")
                     .font(.system(size: 11.5, weight: .bold))
                     .foregroundColor(Config.Colors.ink)
                 Text("14일 연구 완료 · 계속해서 자유롭게 사용하실 수 있어요")
                     .font(.system(size: 10))
                     .foregroundColor(Config.Colors.mute)
+                    .lineSpacing(1.5)
             }
             Spacer()
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    appState.dismissStudyCompletedBanner()
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 7.5, weight: .bold))
+                    .foregroundColor(Config.Colors.mute.opacity(0.85))
+                    .frame(width: 14, height: 14)
+                    .background(Color.black.opacity(0.06))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 1)
+            .help("배너 닫기")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 11)
         .background(Color.green.opacity(0.12))
-        .cornerRadius(6)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.green.opacity(0.25), lineWidth: 0.8))
+        .cornerRadius(7)
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.green.opacity(0.25), lineWidth: 0.8))
     }
 
-    // MARK: - 1. 맨 위 상태 줄
+    // MARK: - 1. 맨 위 상태 줄 (포커스된 창 기준 실시간 노출)
     private var statusHeaderView: some View {
-        HStack(spacing: 8) {
+        let hasFocusedSession = sessionManager.focusedSession != nil
+
+        return HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
-                if let apps = appState.activeSessionAppNames, let duration = appState.activeSessionDurationString {
+                if let focused = sessionManager.focusedSession {
                     HStack(spacing: 5) {
                         Circle()
                             .fill(Color(hex: Config.Colors.accentHex))
                             .frame(width: 7, height: 7)
-                        Text("기록 중 · \(apps)")
+                        Text("\(focused.toolName) 사용 중")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(Config.Colors.ink)
+                            .lineLimit(1)
                     }
-                    Text("현재 세션 \(duration)")
+                    Text("이번 세션 \(focused.formattedFocusedDuration)")
                         .font(.system(size: 11.5))
                         .foregroundColor(Config.Colors.mute)
+                        .lineLimit(1)
                 } else {
                     HStack(spacing: 5) {
                         Circle()
                             .fill(Color.gray.opacity(0.6))
                             .frame(width: 7, height: 7)
-                        Text("대기 중 · AI 도구 감지 중")
+                        Text("대기 중")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(Config.Colors.ink)
                     }
-                    Text("Claude, ChatGPT, 터미널 등을 열면 자동 감지됩니다.")
+                    Text("AI를 쓰면 자동으로 기록돼요. 안 되면 [시작]을 눌러주세요.")
                         .font(.system(size: 11))
                         .foregroundColor(Config.Colors.mute)
+                        .lineLimit(1)
                 }
             }
-            Spacer()
+            Spacer(minLength: 6)
+
+            sessionControlButtonsView(hasFocusedSession: hasFocusedSession)
         }
     }
 
-    // MARK: - 2. "지금 피로 기록하기" 버튼
+    // MARK: - 1-2. 세션 제어 버튼 (포커스된 창 기준: 시작 / 종료 2개 분리)
+    private func sessionControlButtonsView(hasFocusedSession: Bool) -> some View {
+        HStack(spacing: 5) {
+            // 시작 버튼 (현재 포커스 창에 활성 세션이 없을 때 언제든 수동 시작 가능, 비AI 앱 포함)
+            Button {
+                print("[MenuBar] '시작' 버튼 클릭됨 -> 포커스된 창 기준 세션 시작")
+                dismiss()
+                MenuBarAccessHelper.closeMenuBarExtra()
+                SessionManager.shared.manualStartSessionForCurrentWindow()
+            } label: {
+                Text("시작")
+                    .font(.system(size: 11, weight: !hasFocusedSession ? .semibold : .regular))
+                    .foregroundColor(!hasFocusedSession ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute.opacity(0.35))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(!hasFocusedSession ? Color(hex: Config.Colors.accentHex).opacity(0.12) : Config.Colors.cardBackground.opacity(0.4))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(
+                                !hasFocusedSession ? Color(hex: Config.Colors.accentHex).opacity(0.3) : Config.Colors.line.opacity(0.7),
+                                lineWidth: 0.8
+                            )
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(hasFocusedSession)
+            .help(!hasFocusedSession ? "현재 포커스된 창에서 새 작업 시작하기" : "현재 창에서 이미 세션이 진행 중입니다")
+
+            // 종료 버튼 (현재 포커스 창에 활성 세션이 있을 때만 종료 가능)
+            Button {
+                print("[MenuBar] '종료' 버튼 클릭됨 -> 포커스된 창 세션 종료")
+                dismiss()
+                MenuBarAccessHelper.closeMenuBarExtra()
+                SessionManager.shared.manualEndCurrentSessionAndPrepareNewTask()
+            } label: {
+                Text("종료")
+                    .font(.system(size: 11, weight: hasFocusedSession ? .semibold : .regular))
+                    .foregroundColor(hasFocusedSession ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute.opacity(0.35))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(hasFocusedSession ? Color(hex: Config.Colors.accentHex).opacity(0.12) : Config.Colors.cardBackground.opacity(0.4))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(
+                                hasFocusedSession ? Color(hex: Config.Colors.accentHex).opacity(0.3) : Config.Colors.line.opacity(0.7),
+                                lineWidth: 0.8
+                            )
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!hasFocusedSession)
+            .help(hasFocusedSession ? "현재 창의 세션 종료하고 평가하기" : "현재 포커스된 창에 종료할 세션이 없습니다")
+        }
+    }
+
+    // MARK: - 2. "AI 피로 기록하기" 버튼
     private var recordNowButton: some View {
         Button {
-            print("[MenuBar] 지금 피로 기록하기 클릭됨 -> 메뉴 접기 및 캡처 시작")
+            print("[MenuBar] AI 피로 기록하기 클릭됨 -> 메뉴 접기 및 캡처 시작")
             dismiss()
             MenuBarAccessHelper.closeMenuBarExtra()
             VoluntaryRecordService.shared.startFlow()
@@ -252,11 +348,11 @@ public struct MenuBarView: View {
                     .foregroundColor(.white)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("지금 피로 기록하기")
+                    Text("AI 피로 기록하기")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.white)
 
-                    Text("화면이 함께 캡처돼요")
+                    Text("피로가 느껴질 때 언제든 눌러주세요")
                         .font(.system(size: 10.5))
                         .foregroundColor(.white.opacity(0.85))
                 }
@@ -311,11 +407,32 @@ public struct MenuBarView: View {
                     .foregroundColor(Config.Colors.mute)
             }
 
-            // 3가지 KPI 타일 (로컬 데이터로 계산)
+            // 3가지 KPI 타일 (방안 A: 롤링 카운터 & +1 상승 플로팅 피드백 적용)
             HStack(spacing: 6) {
-                kpiCard(title: aiHoursString, label: "누적 사용")
-                kpiCard(title: "\(totalSessions)", label: "세션")
-                kpiCard(title: "\(totalRecords)", label: "기록")
+                KPIRollingCardView(
+                    valueText: aiHoursString,
+                    rawValue: totalAIHours,
+                    label: "누적 사용",
+                    unit: "h",
+                    precision: 1,
+                    storageKey: "kpi_last_seen_ai_hours"
+                )
+                KPIRollingCardView(
+                    valueText: "\(totalSessions)",
+                    rawValue: Double(totalSessions),
+                    label: "세션",
+                    unit: "",
+                    precision: 0,
+                    storageKey: "kpi_last_seen_sessions"
+                )
+                KPIRollingCardView(
+                    valueText: "\(totalRecords)",
+                    rawValue: Double(totalRecords),
+                    label: "기록",
+                    unit: "",
+                    precision: 0,
+                    storageKey: "kpi_last_seen_records"
+                )
             }
 
             // 고정 예시 미리보기 카드 (연구 기간 동안 본인 실제 피로 점수는 비공개 - 자기보고 편향 방지)
@@ -358,23 +475,13 @@ public struct MenuBarView: View {
                         .font(.system(size: 10))
                         .foregroundColor(Config.Colors.mute)
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, 16)
             }
-            .frame(height: 84)
+            .frame(height: 92)
 
             // 참여 인원 안내: Supabase 활성 참여자 수가 성공적으로 조회된 경우에만 노출 (실패 시 완전히 숨김)
             if let activeCount = syncManager.activeParticipantsCount, activeCount > 0 {
                 HStack(spacing: 6) {
-                    // 실시간 연결 라이브 상태 닷 (초록색 펄스 점)
-                    ZStack {
-                        Circle()
-                            .fill(Color(hex: "#34C759").opacity(0.25))
-                            .frame(width: 12, height: 12)
-                        Circle()
-                            .fill(Color(hex: "#34C759"))
-                            .frame(width: 6, height: 6)
-                    }
-
                     Text("\(activeCount)명이 함께 참여하고 있어요")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Config.Colors.mute)
@@ -385,24 +492,7 @@ public struct MenuBarView: View {
     }
 
     private func kpiCard(title: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundColor(Config.Colors.ink)
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundColor(Config.Colors.mute)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Config.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Config.Colors.line, lineWidth: 0.8)
-                )
-        )
+        KPIRollingCardView(valueText: title, rawValue: 0, label: label)
     }
 
     // MARK: - 하단 메뉴 항목
@@ -436,5 +526,223 @@ public struct MenuBarView: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 4)
+    }
+}
+
+// MARK: - 방안 A: 롤링 카운터 & +1 상승 플로팅 피드백 컴포넌트
+public struct KPIRollingCardView: View {
+    public let valueText: String
+    public let rawValue: Double
+    public let label: String
+    public let unit: String
+    public let precision: Int
+    public var previewFloatingBadge: String? = nil
+    public var storageKey: String? = nil
+
+    @State private var displayedValueText: String = ""
+    @State private var currentRawValue: Double = 0
+    @State private var isPulsing: Bool = false
+    @State private var floatingText: String? = nil
+    @State private var floatingOffset: CGFloat = 0
+    @State private var floatingOpacity: Double = 0
+    @State private var floatingScale: CGFloat = 1.0
+
+    public init(
+        valueText: String,
+        rawValue: Double,
+        label: String,
+        unit: String = "",
+        precision: Int = 0,
+        previewFloatingBadge: String? = nil,
+        storageKey: String? = nil
+    ) {
+        self.valueText = valueText
+        self.rawValue = rawValue
+        self.label = label
+        self.unit = unit
+        self.precision = precision
+        self.previewFloatingBadge = previewFloatingBadge
+        self.storageKey = storageKey
+    }
+
+    private var activeFloatingText: String? {
+        previewFloatingBadge ?? floatingText
+    }
+
+    private var activePulsing: Bool {
+        previewFloatingBadge != nil || isPulsing
+    }
+
+    private var effectiveText: String {
+        displayedValueText.isEmpty ? valueText : displayedValueText
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(effectiveText)
+                    .font(.system(size: 15, weight: .bold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(countsDown: false))
+                    .animation(.spring(response: 0.52, dampingFraction: 0.78), value: effectiveText)
+                    .foregroundColor(activePulsing ? Color(hex: Config.Colors.accentHex) : Config.Colors.ink)
+                    .scaleEffect(activePulsing ? 1.06 : 1.0, anchor: .bottomLeading)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: activePulsing)
+
+                if let fText = activeFloatingText {
+                    Text(fText)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(hex: Config.Colors.accentHex))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(
+                            Capsule()
+                                .fill(Color(hex: Config.Colors.accentHex).opacity(0.18))
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(Color(hex: Config.Colors.accentHex).opacity(0.38), lineWidth: 0.8)
+                        )
+                        .offset(y: previewFloatingBadge != nil ? -4 : floatingOffset)
+                        .opacity(previewFloatingBadge != nil ? 1.0 : floatingOpacity)
+                        .scaleEffect(previewFloatingBadge != nil ? 1.0 : floatingScale)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundColor(Config.Colors.mute)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(activePulsing ? Color(hex: Config.Colors.accentHex).opacity(0.08) : Config.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(
+                            activePulsing ? Color(hex: Config.Colors.accentHex).opacity(0.75) : Config.Colors.line,
+                            lineWidth: activePulsing ? 1.0 : 0.8
+                        )
+                )
+                .animation(.easeInOut(duration: 0.35), value: activePulsing)
+        )
+        .onAppear {
+            setupInitialState()
+        }
+        .onChange(of: rawValue) { oldVal, newVal in
+            handleRawValueChange(newVal: newVal)
+        }
+    }
+
+    private func setupInitialState() {
+        guard previewFloatingBadge == nil else {
+            displayedValueText = valueText
+            currentRawValue = rawValue
+            return
+        }
+
+        if let key = storageKey {
+            let userDefaults = UserDefaults.standard
+            if let saved = userDefaults.object(forKey: key) as? Double {
+                if rawValue > saved {
+                    // 직전 상태에서 수치 상승 감지됨:
+                    // 1단계: 먼저 이전 값을 보여주어 사용자가 기존 수치를 인지할 여유 제공
+                    let oldText = (precision == 0) ? "\(Int(saved))" : String(format: "%.1f%@", saved, unit)
+                    displayedValueText = oldText
+                    currentRawValue = saved
+
+                    // 2단계: "시작을 보자마자 뜨는 게 아니라 조금 있다가(0.4초 뒤)" 롤링 및 플로팅 피드백 작동!
+                    let diff = rawValue - saved
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        triggerIncrementFeedback(newVal: rawValue, newText: valueText, diff: diff)
+                        userDefaults.set(rawValue, forKey: key)
+                    }
+                    return
+                }
+            }
+            userDefaults.set(rawValue, forKey: key)
+        }
+
+        displayedValueText = valueText
+        currentRawValue = rawValue
+    }
+
+    private func handleRawValueChange(newVal: Double) {
+        guard previewFloatingBadge == nil else { return }
+        if newVal > currentRawValue {
+            let diff = newVal - currentRawValue
+            // 사용자가 변경 직전의 수치를 잠시 인지한 후(0.35초 뒤) 롤링과 피드백 실행
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                triggerIncrementFeedback(newVal: newVal, newText: valueText, diff: diff)
+                if let key = storageKey {
+                    UserDefaults.standard.set(newVal, forKey: key)
+                }
+            }
+        } else {
+            displayedValueText = valueText
+            currentRawValue = newVal
+            if let key = storageKey {
+                UserDefaults.standard.set(newVal, forKey: key)
+            }
+        }
+    }
+
+    private func triggerIncrementFeedback(newVal: Double, newText: String, diff: Double) {
+        if precision == 1 && diff < 0.05 {
+            displayedValueText = newText
+            currentRawValue = newVal
+            return
+        }
+
+        let badgeText: String
+        if precision == 0 {
+            let intDiff = max(1, Int(round(diff)))
+            badgeText = "+\(intDiff)"
+        } else {
+            badgeText = String(format: "+%.1f%@", diff, unit)
+        }
+
+        // 1. 숫자 롤링 및 오렌지 펄스 테두리 작동 (산뜻하고 경쾌한 0.52초 스프링)
+        withAnimation(.spring(response: 0.52, dampingFraction: 0.78)) {
+            displayedValueText = newText
+            currentRawValue = newVal
+            isPulsing = true
+        }
+
+        // 2. +1 배지 톡 튀어나오며 등장
+        floatingText = badgeText
+        floatingOffset = 0
+        floatingOpacity = 1.0
+        floatingScale = 1.2
+
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.65)) {
+            floatingScale = 1.0
+        }
+
+        // 3. 0.45초간 또렷하게 머문 뒤, 0.65초 동안 가볍고 부드럽게 위로 페이드아웃 (늘어지지 않고 신속히 마무리)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            withAnimation(.easeInOut(duration: 0.65)) {
+                floatingOffset = -14
+                floatingOpacity = 0.0
+                floatingScale = 0.95
+            }
+        }
+
+        // 4. 카드 테두리 오렌지 펄스 복귀
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            withAnimation(.easeOut(duration: 0.45)) {
+                isPulsing = false
+            }
+        }
+
+        // 5. 배지 상태 정리
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            if !isPulsing {
+                floatingText = nil
+            }
+        }
     }
 }

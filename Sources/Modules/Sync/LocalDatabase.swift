@@ -246,6 +246,18 @@ public final class LocalDatabase {
         }
     }
 
+    /// 세션 제목 변경 시 SQLite의 기존 open 이벤트 제목 갱신
+    public func updateSessionOpenEventTitle(sessionId: UUID, newTitle: String) {
+        queue.async {
+            let sql = """
+            UPDATE local_activity_events
+            SET window_title = ?
+            WHERE session_id = ? AND event_type = 'open';
+            """
+            self.bindAndStep(sql: sql, params: ["새 대화 시작: \(newTitle)", sessionId.uuidString])
+        }
+    }
+
     // MARK: - 4. 설문/다이어리 응답 저장 및 큐 등록
     public func recordSurveyEvent(_ event: SurveyEvent) {
         queue.async {
@@ -316,7 +328,21 @@ public final class LocalDatabase {
     public func fetchPendingQueue(limit: Int = 100) -> [QueueItem] {
         var items: [QueueItem] = []
         queue.sync {
-            let sql = "SELECT id, table_name, record_id, payload_json, retry_count FROM sync_queue ORDER BY id ASC LIMIT ?;"
+            // 외래 키 의존성에 맞춰 participants -> sessions -> activity_events -> survey_responses 순서로 우선 전송
+            let sql = """
+            SELECT id, table_name, record_id, payload_json, retry_count
+            FROM sync_queue
+            ORDER BY
+                CASE table_name
+                    WHEN 'participants' THEN 1
+                    WHEN 'sessions' THEN 2
+                    WHEN 'activity_events' THEN 3
+                    WHEN 'survey_responses' THEN 4
+                    ELSE 5
+                END ASC,
+                id ASC
+            LIMIT ?;
+            """
             var stmt: OpaquePointer?
             if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
                 sqlite3_bind_int(stmt, 1, Int32(limit))
@@ -355,6 +381,8 @@ public final class LocalDatabase {
             let idList = ids.map { String($0) }.joined(separator: ",")
             let sql = "UPDATE sync_queue SET retry_count = retry_count + 1 WHERE id IN (\(idList));"
             self.executeRaw(sql)
+            // 50회 이상 지속 실패한 레코드는 큐 잠금 방지를 위해 자동 정리
+            self.executeRaw("DELETE FROM sync_queue WHERE retry_count >= 50;")
         }
     }
 
@@ -500,6 +528,28 @@ public final class LocalDatabase {
         return items
     }
 
+    /// 오늘 작성 완료된 설문 및 다이어리 응답(start, mid, end, diary) 건수 조회
+    public func fetchTodaySurveyResponseCount() -> Int {
+        var count = 0
+        queue.sync {
+            let calendar = Calendar.current
+            let startOfToday = calendar.startOfDay(for: Date())
+            let iso = ISO8601DateFormatter()
+            let startStr = iso.string(from: startOfToday)
+
+            let sql = "SELECT COUNT(*) FROM local_survey_responses WHERE status = 'answered' AND kind != 'nudge' AND answered_at >= ?;"
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+                sqlite3_bind_text(stmt, 1, (startStr as NSString).utf8String, -1, nil)
+                if sqlite3_step(stmt) == SQLITE_ROW {
+                    count = Int(sqlite3_column_int(stmt, 0))
+                }
+            }
+            sqlite3_finalize(stmt)
+        }
+        return count
+    }
+
     public func deleteActivityEvents(ids: [String]) {
         guard !ids.isEmpty else { return }
         queue.async {
@@ -521,6 +571,18 @@ public final class LocalDatabase {
                 let idSet = Set(ids.compactMap { UUID(uuidString: $0) })
                 DebugLogStore.shared.removeEvents(withIds: idSet)
             }
+        }
+    }
+
+    /// 테스트 및 재검증을 위해 모든 로컬 활동 로그, 세션, 설문 응답 및 전송 큐를 완전히 비웁니다.
+    public func clearAllLocalData() {
+        queue.async {
+            self.executeRaw("DELETE FROM local_activity_events;")
+            self.executeRaw("DELETE FROM local_sessions;")
+            self.executeRaw("DELETE FROM local_survey_responses;")
+            self.executeRaw("DELETE FROM sync_queue;")
+            self.executeRaw("VACUUM;")
+            print("[LocalDB] 모든 로컬 활동 로그, 세션, 설문 기록 초기화 완료")
         }
     }
 

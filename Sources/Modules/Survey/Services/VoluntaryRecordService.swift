@@ -55,48 +55,21 @@ public final class VoluntaryRecordService {
         self.capturesDirectory = dir
     }
 
-    /// 자발적 기록 전체 플로우 시작 (즉시 피로 기록):
-    /// 1) 화면 기록 권한 사전 점검
-    /// 2) 직전 최상단 앱 및 세션 맥락 포착
-    /// 3) 전체 화면 자동 캡처 실행 (screencapture -x)
-    /// 4) 결과와 함께 우상단 자발적 피로 기록 팝업 띄움
+    /// 자발적 기록 플로우 시작 (즉시 피로 기록):
+    /// - 화면 캡처는 필수가 아닌 선택사항이며, 팝업이 열린 후 사용자가 '캡처하기'를 누르면 원하는 영역/창을 지정하여 캡처
+    /// - 팝업을 즉시 우상단에 띄움
     public func startFlow() {
         DispatchQueue.main.async {
             // 0. 열려 있는 메뉴 막대 패널이 있다면 즉시 닫음
             MenuBarAccessHelper.closeMenuBarExtra()
 
-            // 1. 화면 기록 권한 확인 및 미허용 시 시스템 요청
-            if #available(macOS 11.0, *) {
-                if !CGPreflightScreenCaptureAccess() {
-                    print("[VoluntaryRecord] 화면 기록 권한 미부여 -> 시스템 권한 요청 실행")
-                    PermissionsManager.shared.requestScreenCapture()
-
-                    let alert = NSAlert()
-                    alert.messageText = "화면 기록 권한이 필요합니다"
-                    alert.informativeText = "피로한 순간의 실제 앱 창을 캡처하여 함께 저장하려면 화면 기록 권한이 필요합니다.\n\n1. 열린 시스템 설정 창에서 'AIFatigueTracker.app'의 스위치를 켜주세요.\n2. macOS 안내창이 뜨면 '종료 및 다시 열기'를 눌러주세요."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "설정 확인")
-                    alert.addButton(withTitle: "취소")
-                    if alert.runModal() == .alertFirstButtonReturn {
-                        PermissionsManager.shared.openSystemSettings(pane: "Privacy_ScreenCapture")
-                    }
-                    return
-                }
-            }
-
-            // 2. 현재 직전 최상단 앱 및 브라우저 맥락 포착
+            // 1. 현재 직전 최상단 앱 및 브라우저 맥락 포착
             var context = self.captureActiveContext()
             context.isFromNudge = false
+            context.localImagePath = nil // 자동 캡처하지 않고 사용자가 필요 시 직접 캡처 첨부
 
-            // 3. 메뉴 막대 패널이 화면에서 완전히 접히고 그래픽 버퍼가 갱신되도록 200ms 딜레이 후 전체 화면 자동 캡처 시작
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
-                self.executeFullScreenCapture { capturedImagePath in
-                    context.localImagePath = capturedImagePath
-
-                    // 4. 우상단 자발적 피로 기록 팝업 띄움
-                    SurveyWindowManager.shared.showVoluntaryPopup(context: context)
-                }
-            }
+            // 2. 우상단 자발적 피로 기록 팝업 띄움
+            SurveyWindowManager.shared.showVoluntaryPopup(context: context)
         }
     }
 
@@ -144,39 +117,9 @@ public final class VoluntaryRecordService {
         }
     }
 
-    /// 원하는 영역 선택 캡처 (screencapture -i -x)
+    /// 스마트 하이브리드 화면 캡처: 클릭하면 창, 드래그하면 영역 (CleanShot X / 카카오톡 캡처 방식)
     public func executeAreaCapture(completion: @escaping (String?) -> Void) {
-        let filename = "capture_area_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(8)).png"
-        let targetURL = self.capturesDirectory.appendingPathComponent(filename)
-        let targetPath = targetURL.path
-
-        DispatchQueue.global(qos: .userInteractive).async {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            process.arguments = ["-i", "-x", targetPath]
-
-            do {
-                try process.run()
-                process.waitUntilExit()
-
-                if FileManager.default.fileExists(atPath: targetPath),
-                   let attrs = try? FileManager.default.attributesOfItem(atPath: targetPath),
-                   let size = attrs[.size] as? UInt64, size > 100 {
-                    print("[VoluntaryRecord] 영역 캡처 성공: \(targetPath) (\(size) bytes)")
-                    DispatchQueue.main.async {
-                        completion(targetPath)
-                    }
-                    return
-                }
-            } catch {
-                print("[VoluntaryRecord] screencapture 서브프로세스 오류: \(error)")
-            }
-
-            // 사용자가 Esc 등으로 캡처를 취소했거나 실패한 경우
-            DispatchQueue.main.async {
-                completion(nil)
-            }
-        }
+        SmartScreenCaptureService.shared.startCapture(completion: completion)
     }
 
     // MARK: - 내부 맥락 추출

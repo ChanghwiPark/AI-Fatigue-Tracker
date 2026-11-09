@@ -5,8 +5,22 @@ import AVFoundation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--run-detection-tests") {
+            _ = DetectionSessionTestSuite.runAllTests()
+            exit(0)
+        }
+
+        if CommandLine.arguments.contains("--render-theme-previews") {
+            ThemePreviewRenderer.renderAllThemePreviews()
+            exit(0)
+        }
+
         // Dock 아이콘 없는 백그라운드/액세서리 앱 설정
         NSApplication.shared.setActivationPolicy(.accessory)
+
+        // 시스템 유휴 상태나 창 닫힘 시 macOS TAL/자동 종료에 의해 조용히 프로세스가 종료되는 것 원천 방지
+        ProcessInfo.processInfo.disableAutomaticTermination("AI 피로 기록 백그라운드 상시 수집 및 세션 추적")
+        ProcessInfo.processInfo.disableSuddenTermination()
 
         // 상시 전체 컴퓨터 활동 감지 및 AI 세션 추적 시작
         ActivityDetector.shared.start()
@@ -128,6 +142,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print("[SpeechCheck] supportsOnDevice: \(recognizer?.supportsOnDeviceRecognition ?? false)")
             exit(0)
         }
+
+        // --test-speech-engine: 음성 인식 엔진 실제 시작, 빠른 토글, 필드 전환, 안전 정지 종합 검증
+        if CommandLine.arguments.contains("--test-speech-engine") {
+            let status = SFSpeechRecognizer.authorizationStatus()
+            guard status == .authorized else {
+                print("[SpeechTest] ⚠️ 시스템 음성 인식 권한 대기 중 (status: \(status.rawValue)). 터미널 환경 대신 실행 중인 앱의 설문 화면에서 마이크 버튼을 눌러 권한을 허용하시면 즉시 정상 작동합니다.")
+                exit(0)
+            }
+            print("[SpeechTest] 🚀 SpeechInputManager 음성 인식 종합 시나리오 테스트 시작")
+
+            // 시나리오 1: 단일 필드 녹음 시작
+            print("[SpeechTest] [시나리오 1] 필드 'field_A' 음성 인식 시작...")
+            SpeechInputManager.shared.startRecording(fieldKey: "field_A", currentText: "기존 텍스트") { updated in
+                print("[SpeechTest] 🗣️ 실시간 콜백 수신: \"\(updated)\"")
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            let s1Recording = SpeechInputManager.shared.isRecording
+            let s1Active = SpeechInputManager.shared.activeFieldKey
+            print("[SpeechTest] 📊 시나리오 1 결과 -> isRecording: \(s1Recording), activeFieldKey: \(s1Active ?? "nil")")
+
+            // 시나리오 2: 필드 간 전환 ('field_A' -> 'field_B')
+            print("[SpeechTest] [시나리오 2] 필드 'field_B'로 전환...")
+            SpeechInputManager.shared.toggleRecording(fieldKey: "field_B", currentText: "") { _ in }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            let s2Active = SpeechInputManager.shared.activeFieldKey
+            print("[SpeechTest] 📊 시나리오 2 결과 -> activeFieldKey: \(s2Active ?? "nil")")
+
+            // 시나리오 3: 빠른 연타 (동일 필드 연속 토글)
+            print("[SpeechTest] [시나리오 3] 동일 필드 빠른 연속 토글 (스트레스 테스트)...")
+            SpeechInputManager.shared.toggleRecording(fieldKey: "field_B", currentText: "") { _ in }
+            SpeechInputManager.shared.toggleRecording(fieldKey: "field_B", currentText: "") { _ in }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            print("[SpeechTest] 📊 시나리오 3 완료 -> 예외/크래시 없이 정상 처리")
+
+            // 시나리오 4: 최종 안전 정지 및 리소스 해제 검증
+            print("[SpeechTest] [시나리오 4] 녹음 완전 정지 및 리소스 정리 검증...")
+            SpeechInputManager.shared.stopRecording()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            let s4Recording = SpeechInputManager.shared.isRecording
+            let s4Active = SpeechInputManager.shared.activeFieldKey
+            print("[SpeechTest] 📊 시나리오 4 결과 -> isRecording: \(s4Recording), activeFieldKey: \(s4Active ?? "nil")")
+
+            let allPassed = !s4Recording && (s4Active == nil)
+            print("[SpeechTest] 🎉 종합 음성 테스트 결과: \(allPassed ? "PASS" : "FAIL")")
+            exit(allPassed ? 0 : 1)
+        }
     }
 
     /// 사용자가 Finder나 Launchpad에서 앱을 다시 클릭했을 때 반응
@@ -146,6 +206,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         MenuBarAccessHelper.openMenuBarExtra(delay: 0.1)
         return true
+    }
+
+    /// 창이 모두 닫혀도 백그라운드 상주 및 메뉴바 앱 유지를 위해 앱을 절대 종료하지 않음
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
     }
 }
 

@@ -35,7 +35,8 @@ public struct SupabaseSessionPayload: Codable {
         let iso = ISO8601DateFormatter()
         self.id = session.sessionId.uuidString
         self.participant_id = participantId
-        self.session_title = session.title.isEmpty ? nil : session.title
+        let titleVal = (session.originalTitle?.isEmpty == false && !session.originalTitle!.hasPrefix("[AI 대화]")) ? session.originalTitle! : session.title
+        self.session_title = titleVal.isEmpty ? nil : titleVal
         self.started_at = iso.string(from: session.openedAt)
         if let closed = session.closedAt {
             self.ended_at = iso.string(from: closed)
@@ -108,6 +109,8 @@ public struct SupabaseActivityEventPayload: Codable {
                 typeStr = "system_sleep"
             case .resume:
                 typeStr = "system_wake"
+            case .survey:
+                typeStr = event.navType ?? "survey"
             }
         }
         self.event_type = typeStr

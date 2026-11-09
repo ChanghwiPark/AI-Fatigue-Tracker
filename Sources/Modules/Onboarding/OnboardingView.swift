@@ -12,59 +12,100 @@ public struct OnboardingView: View {
     public enum PermissionGuideType: String {
         case accessibility
         case screenCapture
-        case microphone
         case browser
+        case microphone
+        case speechRecognition
     }
 
-    @State private var step: Int = 1
+    @State private var step: Int = 0
     @State private var inputName: String = ""
     @State private var showErrorText: Bool = false
     @State private var activeGuide: PermissionGuideType? = nil
 
     @FocusState private var isFieldFocused: Bool
+    private let forcedStep: Int?
 
-    public init() {}
+    public init(initialStep: Int? = nil) {
+        self.forcedStep = initialStep
+        if let s = initialStep {
+            _step = State(initialValue: s)
+        } else {
+            _step = State(initialValue: 0)
+        }
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
-            // 헤더 영역
-            headerView
-                .padding(.top, 24)
-                .padding(.horizontal, 28)
-
-            Divider()
-                .padding(.vertical, 16)
-                .padding(.horizontal, 20)
-
-            // 본문 (단계별 전환)
-            if step == 1 {
-                nameInputStepView
-                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
-            } else if step == 2 {
-                permissionsStepView
-                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+            if step == 0 {
+                welcomeStepView
+                    .transition(.asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .leading)))
             } else {
-                completionStepView
-                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+                // 헤더 영역 (참여자 등록, 필수 권한 설정, 설정 완료)
+                headerView
+                    .padding(.top, 18)
+                    .padding(.horizontal, 26)
+
+                Divider()
+                    .padding(.top, 10)
+                    .padding(.bottom, 12)
+                    .padding(.horizontal, 22)
+
+                // 본문 (단계별 전환)
+                if step == 1 {
+                    nameInputStepView
+                        .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+                } else if step == 2 {
+                    permissionsStepView
+                        .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+                } else {
+                    completionStepView
+                        .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+                }
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
 
             // 하단 버튼 바
             bottomButtonBar
-                .padding(.horizontal, 28)
-                .padding(.bottom, 20)
+                .padding(.horizontal, 26)
+                .padding(.bottom, 18)
         }
-        .frame(width: 550, height: 640)
+        .tint(Color(hex: Config.Colors.accentHex))
+        .accentColor(Color(hex: Config.Colors.accentHex))
+        .frame(width: 540, height: 600)
         .background(Config.Colors.paper)
         .onAppear {
             permissions.startPolling()
-            if !appState.participantName.isEmpty {
+            if let forced = forcedStep {
+                step = forced
+                if forced >= 1 && inputName.isEmpty {
+                    inputName = "박창휘"
+                }
+                return
+            }
+            let savedStep = UserDefaults.standard.integer(forKey: "onboarding_current_step")
+            if savedStep >= 1 {
+                step = savedStep
+            } else if !appState.participantName.isEmpty {
                 inputName = appState.participantName
                 step = 2
             }
+            if !appState.participantName.isEmpty && inputName.isEmpty {
+                inputName = appState.participantName
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                isFieldFocused = true
+                if step == 1 {
+                    isFieldFocused = true
+                }
+            }
+        }
+        .onChange(of: step) { _, newStep in
+            UserDefaults.standard.set(newStep, forKey: "onboarding_current_step")
+            UserDefaults.standard.synchronize()
+            if newStep == 1 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isFieldFocused = true
+                }
             }
         }
         .onDisappear {
@@ -90,213 +131,235 @@ public struct OnboardingView: View {
                 withAnimation(.spring()) { activeGuide = nil }
             }
         }
-    }
-
-    private var appIconImage: NSImage? {
-        if let image = Bundle.main.image(forResource: "AppIcon") {
-            return image
-        }
-        if let icon = NSApp.applicationIconImage {
-            return icon
-        }
-        return NSImage(named: "AppIcon")
-    }
-
-    // MARK: - 헤더
-    private var headerView: some View {
-        HStack(spacing: 14) {
-            if let icon = appIconImage {
-                Image(nsImage: icon)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 52, height: 52)
-                    .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
-            } else {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Config.Colors.line, lineWidth: 1.5)
-                        .frame(width: 52, height: 52)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(Config.Colors.cardBackground))
-
-                    Image(systemName: "battery.25")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(Color(hex: Config.Colors.accentHex))
-                }
+        .onChange(of: permissions.isSpeechRecognitionGranted) { _, granted in
+            if granted && activeGuide == .speechRecognition {
+                withAnimation(.spring()) { activeGuide = nil }
             }
+        }
+    }
 
+    private var displayName: String {
+        let trimmed = inputName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        if !appState.participantName.isEmpty { return appState.participantName }
+        return "참여자"
+    }
+
+    // MARK: - 헤더 (참여자 등록, 필수 권한 설정, 설정 완료)
+    private var headerView: some View {
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("AI 피로 기록 연구 참여 안내")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(Config.Colors.ink)
+                if step == 1 {
+                    Text("참여자 등록")
+                        .font(.system(size: 16.5, weight: .bold))
+                        .foregroundColor(Config.Colors.ink)
 
-                Text("2주간의 AI 도구 사용 및 피로 경험표집 연구")
-                    .font(.system(size: 12))
-                    .foregroundColor(Config.Colors.mute)
+                    Text("연구팀이 참여자를 구분하는 데 쓰니 본명을 정확하게 입력해주세요.")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(Config.Colors.mute)
+                } else if step == 2 {
+                    Text("필수 권한 설정")
+                        .font(.system(size: 16.5, weight: .bold))
+                        .foregroundColor(Config.Colors.ink)
+
+                    Text("처음 한 번만 설정하면 돼요")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(Config.Colors.mute)
+                } else if step == 3 {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 16.5, weight: .bold))
+                            .foregroundColor(Color(hex: Config.Colors.accentHex))
+
+                        Text("설정이 끝났어요")
+                            .font(.system(size: 16.5, weight: .bold))
+                            .foregroundColor(Config.Colors.ink)
+                    }
+
+                    Text("\(displayName)님, 2주 동안 잘 부탁드려요")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(Config.Colors.mute)
+                }
             }
 
             Spacer()
 
-            // 단계 인디케이터
+            // 단계 인디케이터 (3단계 점 유지)
             HStack(spacing: 6) {
                 Circle()
                     .fill(step == 1 ? Color(hex: Config.Colors.accentHex) : Config.Colors.line)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 7.5, height: 7.5)
                 Circle()
                     .fill(step == 2 ? Color(hex: Config.Colors.accentHex) : Config.Colors.line)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 7.5, height: 7.5)
                 Circle()
                     .fill(step == 3 ? Color(hex: Config.Colors.accentHex) : Config.Colors.line)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 7.5, height: 7.5)
             }
         }
+    }
+
+    // MARK: - 0단계: 환영 화면
+    private var welcomeStepView: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 22) {
+                // 앱 대표 로고 (크게, 화면 가운데 정렬)
+                bigAppLogoView
+
+                VStack(spacing: 8) {
+                    Text("AI 피로 연구 참여 안내")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(Config.Colors.ink)
+
+                    Text("2주 동안 AI를 쓰며 느낀 피로를 기록해요")
+                        .font(.system(size: 13.5))
+                        .foregroundColor(Config.Colors.mute)
+                }
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var bigAppLogoView: some View {
+        if let icon = appLogoImage {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 96, height: 96)
+                .cornerRadius(22)
+                .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 5)
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22)
+                    .fill(Color(hex: Config.Colors.accentHex))
+                    .frame(width: 96, height: 96)
+                    .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 5)
+                Image(systemName: "battery.100.bolt")
+                    .font(.system(size: 44))
+                    .foregroundColor(.white)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var appLogoView: some View {
+        if let icon = appLogoImage {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 38, height: 38)
+                .cornerRadius(8)
+                .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1.5)
+        }
+    }
+
+    private var appLogoImage: NSImage? {
+        if let icon = Bundle.main.image(forResource: "AppIcon") {
+            return icon
+        }
+        if let appIcon = NSApp.applicationIconImage, appIcon.isValid {
+            return appIcon
+        }
+        if let named = NSImage(named: "AppIcon") {
+            return named
+        }
+        let fallbackPath = "/Users/changhwipark/Desktop/UX_Research/DxD_Lab/[Project]AI_Fatigue/LogSystem_Test2_Mac/Sources/Resources/AppIcon.icns"
+        if FileManager.default.fileExists(atPath: fallbackPath) {
+            return NSImage(contentsOfFile: fallbackPath)
+        }
+        return nil
     }
 
     // MARK: - 1단계: 이름 입력
     private var nameInputStepView: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("참여자 등록")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Config.Colors.ink)
-
-                Text("연구팀이 참여자를 구분하는 데 쓰니 본명을 정확하게 입력해주세요.")
-                    .font(.system(size: 13))
-                    .foregroundColor(Config.Colors.mute)
-                    .lineSpacing(2)
-            }
-
+        VStack(alignment: .leading, spacing: 14) {
+            // 이름 입력 카드
             VStack(alignment: .leading, spacing: 8) {
-                Text("이름")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Config.Colors.ink)
+                HStack(spacing: 6) {
+                    Text("이름")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundColor(Config.Colors.ink)
 
-                TextField("예: 홍길동", text: $inputName)
-                    .textFieldStyle(.plain)
-                    .focused($isFieldFocused)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(Config.Colors.ink)
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Config.Colors.cardBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(showErrorText ? Color.red : Config.Colors.line, lineWidth: 1)
-                            )
-                    )
-                    .onChange(of: inputName) { _, newValue in
-                        if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            showErrorText = false
+                    Text("필수")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundColor(Color(hex: Config.Colors.accentHex))
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 1)
+                        .background(Color(hex: Config.Colors.accentHex).opacity(0.1))
+                        .cornerRadius(3)
+                }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(Config.Colors.mute)
+
+                    TextField("예: 홍길동", text: $inputName)
+                        .textFieldStyle(.plain)
+                        .focused($isFieldFocused)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Config.Colors.ink)
+
+                    if !inputName.isEmpty {
+                        Button(action: { inputName = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 13))
+                                .foregroundColor(Config.Colors.mute)
                         }
+                        .buttonStyle(.plain)
                     }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
+                .background(Config.Colors.cardBackground)
+                .cornerRadius(7)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(showErrorText ? Color.red : Config.Colors.line, lineWidth: showErrorText ? 1.2 : 0.8)
+                )
 
                 if showErrorText {
-                    Text("이름을 입력해야 다음으로 넘어갈 수 있습니다.")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(.red)
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.red)
+                        Text("이름을 입력해야 다음으로 넘어갈 수 있습니다.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.red)
+                    }
                 }
             }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(Config.Colors.cardBackground)
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(Config.Colors.line, lineWidth: 0.8))
+            )
 
             Spacer()
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 26)
     }
 
     // MARK: - 2단계: 직관적 권한 설정
     private var permissionsStepView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // 상단 제목 및 원클릭 순서대로 가이드 헤더
-            HStack(alignment: .center) {
-                let essentialCount = (permissions.isAccessibilityGranted ? 1 : 0) + 
-                                     (permissions.isScreenCaptureGranted ? 1 : 0) + 
-                                     (permissions.isBrowserAutomationGranted ? 1 : 0)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        Text("필수 권한 설정")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Config.Colors.ink)
-
-                        // 진행률 배지
-                        Text("\(essentialCount) / 3 필수 완료")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(permissions.isEssentialGranted ? .green : Color(hex: Config.Colors.accentHex))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2.5)
-                            .background(
-                                (permissions.isEssentialGranted ? Color.green : Color(hex: Config.Colors.accentHex)).opacity(0.12)
-                            )
-                            .cornerRadius(10)
-                    }
-
-                    Text("스위치를 켜면 이 화면에서 실시간으로 자동 감지됩니다.")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(Config.Colors.mute)
-                }
-
-                Spacer()
-
-                // 원클릭 마법사 버튼
-                if !permissions.isAllGranted {
-                    Button(action: {
-                        if !permissions.isAccessibilityGranted {
-                            permissions.requestAccessibility()
-                            withAnimation(.spring()) { activeGuide = .accessibility }
-                        } else if !permissions.isScreenCaptureGranted {
-                            permissions.requestScreenCapture()
-                            withAnimation(.spring()) { activeGuide = .screenCapture }
-                        } else if !permissions.isBrowserAutomationGranted {
-                            permissions.requestAllBrowserAutomation()
-                            withAnimation(.spring()) { activeGuide = .browser }
-                        } else if !permissions.isMicrophoneGranted {
-                            permissions.requestMicrophone()
-                            withAnimation(.spring()) { activeGuide = .microphone }
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "wand.and.stars")
-                                .font(.system(size: 11))
-                            Text("순서대로 설정")
-                                .font(.system(size: 11.5, weight: .bold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(hex: Config.Colors.accentHex))
-                        .cornerRadius(6)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // 게이지 진행 바
-            let essentialCount = (permissions.isAccessibilityGranted ? 1 : 0) + 
-                                 (permissions.isScreenCaptureGranted ? 1 : 0) + 
-                                 (permissions.isBrowserAutomationGranted ? 1 : 0)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Config.Colors.line)
-                        .frame(height: 5)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(permissions.isEssentialGranted ? Color.green : Color(hex: Config.Colors.accentHex))
-                        .frame(width: max(6, geo.size.width * CGFloat(essentialCount) / 3.0), height: 5)
-                        .animation(.spring(), value: essentialCount)
-                }
-            }
-            .frame(height: 5)
-            .padding(.bottom, 2)
-
             // 권한 카드 목록
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 9) {
+                VStack(spacing: 8) {
                     // 1. 손쉬운 사용 (핵심 필수)
                     permissionCard(
                         type: .accessibility,
                         tag: "필수",
                         tagColor: Color(hex: Config.Colors.accentHex),
                         icon: "macwindow.on.rectangle",
-                        title: "손쉬운 사용 (창 제목 및 활동 감지)",
-                        desc: "현재 작업 중인 AI 도구 창과 체류 시간을 감지합니다.",
+                        title: "손쉬운 사용 (AI 사용 시간 확인)",
+                        desc: "어떤 AI 도구를 얼마나 썼는지 확인해요.",
                         isGranted: permissions.isAccessibilityGranted,
                         guideSteps: [
                             "1. 방금 열린 [시스템 설정] 창을 확인하세요.",
@@ -311,66 +374,92 @@ public struct OnboardingView: View {
                         }
                     }
 
-                    // 2. 화면 기록 (필수)
+                    // 2. 웹 브라우저 자동화 (AppleEvents - 필수)
+                    browserAutomationPermissionCard
+
+                    // 3. 화면 기록 (선택)
                     permissionCard(
                         type: .screenCapture,
-                        tag: "필수",
-                        tagColor: Color(hex: Config.Colors.accentHex),
+                        tag: "선택",
+                        tagColor: Config.Colors.mute,
                         icon: "camera.viewfinder",
-                        title: "화면 기록 (피로 순간 ⌥⌘S 화면 캡처)",
-                        desc: "피로한 순간 직접 기록(⌥⌘S) 시 문제 화면을 캡처하고 분석하는 필수 권한입니다.",
+                        title: "화면 기록 (선택 화면 캡처)",
+                        desc: "피로 기록 시 원하는 창이나 화면 영역을 직접 캡처하여 첨부할 수 있어요.",
                         isGranted: permissions.isScreenCaptureGranted,
                         guideSteps: [
                             "1. 방금 열린 [시스템 설정]의 '화면 및 시스템 오디오 녹음'을 확인하세요.",
                             "2. 목록에서 'AIFatigueTracker' 옆의 스위치를 켜주세요.",
-                            "3. 💡 '종료 및 다시 열기' 창이 뜨면 [나중에]를 누르셔도 즉시 권한이 적용됩니다. (앱을 끄실 필요가 없습니다)"
+                            "3. 💡 '종료 및 다시 열기' 창이 뜨면 클릭하셔도 이 권한 설정 화면으로 즉시 안전하게 복원됩니다."
                         ],
                         systemPane: "Privacy_ScreenCapture"
                     ) {
-                        permissions.requestScreenCapture()
+                        permissions.requestScreenCapture(from: "onboarding")
                         withAnimation(.spring()) {
                             activeGuide = .screenCapture
                         }
                     }
 
-                    // 3. 웹 브라우저 자동화 (AppleEvents - 필수)
-                    browserAutomationPermissionCard
-
-                    // 4. 마이크 & 음성 인식 (선택)
+                    // 4. 마이크 (선택)
                     permissionCard(
                         type: .microphone,
                         tag: "선택",
-                        tagColor: .purple,
+                        tagColor: Config.Colors.mute,
                         icon: "mic.fill",
-                        title: "마이크 및 음성 인식 (음성 메모)",
-                        desc: "피로 설문의 주관식 문항을 타자 대신 말로 빠르게 입력할 수 있습니다.",
-                        isGranted: permissions.isMicrophoneGranted && permissions.isSpeechRecognitionGranted,
+                        title: "마이크 (음성 녹음)",
+                        desc: "서술형 설문 답변을 말로 녹음해요.",
+                        isGranted: permissions.isMicrophoneGranted,
                         guideSteps: [
                             "1. 화면에 뜨는 '마이크에 접근하려고 합니다' 창에서 [허용]을 눌러주세요.",
-                            "💡 키보드 타자로만 입력하실 경우 건너뛰셔도 연구 참여에 문제없습니다."
+                            "2. 시스템 설정의 '마이크' 목록에서 AIFatigueTracker 스위치를 켜주세요.",
+                            "💡 '종료 및 다시 열기' 창이 뜨더라도 이 설정 화면으로 자동 복귀됩니다."
                         ],
                         systemPane: "Privacy_Microphone"
                     ) {
-                        permissions.requestMicrophone()
-                        permissions.requestSpeechRecognition()
+                        permissions.requestMicrophone(from: "onboarding")
                         withAnimation(.spring()) {
                             activeGuide = .microphone
+                        }
+                    }
+
+                    // 5. 음성 인식 (선택)
+                    permissionCard(
+                        type: .speechRecognition,
+                        tag: "선택",
+                        tagColor: Config.Colors.mute,
+                        icon: "waveform.and.magnifyingglass",
+                        title: "음성 인식 (텍스트 변환)",
+                        desc: "녹음된 음성을 한국어 텍스트(STT)로 자동 변환해요.",
+                        isGranted: permissions.isSpeechRecognitionGranted,
+                        guideSteps: [
+                            "1. 화면에 뜨는 '음성 인식에 접근하려고 합니다' 창에서 [허용]을 눌러주세요.",
+                            "2. 시스템 설정의 '음성 인식' 목록에서 AIFatigueTracker 스위치를 켜주세요.",
+                            "💡 '종료 및 다시 열기' 창이 뜨더라도 이 설정 화면으로 자동 복귀됩니다."
+                        ],
+                        systemPane: "Privacy_SpeechRecognition"
+                    ) {
+                        permissions.requestSpeechRecognition(from: "onboarding")
+                        withAnimation(.spring()) {
+                            activeGuide = .speechRecognition
                         }
                     }
                 }
                 .padding(.vertical, 2)
             }
+            .padding(.top, 2)
 
-            // 하단 안내 텍스트
-            HStack(spacing: 4) {
+            Spacer(minLength: 8)
+
+            // 하단 안내 텍스트 (카드가 끝난 후 하단 버튼 바 바로 위 중앙 배치)
+            HStack(spacing: 5) {
                 Image(systemName: "info.circle")
                     .font(.system(size: 11))
                     .foregroundColor(Config.Colors.mute)
-                Text("상단 메뉴 막대 아이콘의 [설정…]에서 언제든 권한을 다시 설정하실 수 있습니다.")
+                Text("상단 메뉴 막대 아이콘의 [설정]에서 언제든 권한을 다시 설정하실 수 있습니다.")
                     .font(.system(size: 11))
-                    .foregroundColor(Config.Colors.mute.opacity(0.9))
+                    .foregroundColor(Config.Colors.mute.opacity(0.85))
             }
-            .padding(.top, 2)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.bottom, 4)
         }
         .padding(.horizontal, 28)
     }
@@ -393,8 +482,8 @@ public struct OnboardingView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 18))
-                    .foregroundColor(isGranted ? .green : tagColor)
+                    .font(.system(size: 16))
+                    .foregroundColor(isGranted ? Config.Colors.ink.opacity(0.85) : tagColor)
                     .frame(width: 24, height: 24)
                     .padding(.top, 2)
 
@@ -404,13 +493,23 @@ public struct OnboardingView: View {
                             .font(.system(size: 12.5, weight: .bold))
                             .foregroundColor(Config.Colors.ink)
 
-                        Text(tag)
-                            .font(.system(size: 9.5, weight: .bold))
-                            .foregroundColor(tagColor)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1.5)
-                            .background(tagColor.opacity(0.12))
-                            .cornerRadius(4)
+                        if tag == "선택" {
+                            Text("선택")
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundColor(Config.Colors.mute)
+                                .padding(.horizontal, 4.5)
+                                .padding(.vertical, 1)
+                                .background(Config.Colors.line.opacity(0.7))
+                                .cornerRadius(3)
+                        } else {
+                            Text(tag)
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundColor(tagColor)
+                                .padding(.horizontal, 4.5)
+                                .padding(.vertical, 1)
+                                .background(tagColor.opacity(0.1))
+                                .cornerRadius(3)
+                        }
                     }
 
                     Text(desc)
@@ -423,17 +522,17 @@ public struct OnboardingView: View {
 
                 if isGranted {
                     HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.green)
-                        Text("허용 완료")
-                            .font(.system(size: 11.5, weight: .bold))
-                            .foregroundColor(.green)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundColor(Color(hex: "#2E7D32"))
+                        Text("허용됨")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(hex: "#2E7D32"))
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.12))
-                    .cornerRadius(6)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(Color(hex: "#2E7D32").opacity(0.08))
+                    .cornerRadius(5)
                     .padding(.top, 2)
                 } else {
                     Button(action: onAction) {
@@ -444,11 +543,13 @@ public struct OnboardingView: View {
                             }
                         }
                         .font(.system(size: 11.5, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 5.5)
+                        .background(tag == "필수" ? Color(hex: Config.Colors.accentHex) : Color(hex: "#5C564D"))
+                        .cornerRadius(6)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(tag == "필수" ? Color(hex: Config.Colors.accentHex) : Config.Colors.ink)
+                    .buttonStyle(.plain)
                     .padding(.top, 2)
                 }
             }
@@ -460,7 +561,7 @@ public struct OnboardingView: View {
                         Image(systemName: "lightbulb.fill")
                             .font(.system(size: 11))
                             .foregroundColor(.orange)
-                        Text("설정 방법 안내 (스위치를 켜면 즉시 자동 감지됩니다)")
+                        Text("설정 방법 안내 (처음 한 번만 설정하면 돼요)")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(Config.Colors.ink)
                     }
@@ -475,7 +576,7 @@ public struct OnboardingView: View {
                     HStack {
                         Spacer()
                         Button("설정 창 다시 열기") {
-                            permissions.openSystemSettings(pane: systemPane)
+                            permissions.openSystemSettings(pane: systemPane, from: "onboarding")
                         }
                         .font(.system(size: 10.5, weight: .medium))
                         .buttonStyle(.bordered)
@@ -491,10 +592,10 @@ public struct OnboardingView: View {
         .padding(11)
         .background(
             RoundedRectangle(cornerRadius: 9)
-                .fill(isGranted ? Color.green.opacity(0.07) : Config.Colors.cardBackground)
+                .fill(Config.Colors.cardBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 9)
-                        .stroke(isGranted ? Color.green.opacity(0.25) : (isExpanded ? Color.orange.opacity(0.4) : Config.Colors.line), lineWidth: isExpanded ? 1.2 : 0.8)
+                        .stroke(isExpanded ? Color.orange.opacity(0.4) : Config.Colors.line, lineWidth: isExpanded ? 1.2 : 0.8)
                 )
         )
     }
@@ -506,166 +607,188 @@ public struct OnboardingView: View {
         let tagColor = Color(hex: Config.Colors.accentHex)
 
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "globe")
-                    .font(.system(size: 18))
-                    .foregroundColor(isGranted ? .green : tagColor)
-                    .frame(width: 24, height: 24)
-                    .padding(.top, 2)
+            browserCardHeader(isGranted: isGranted, isExpanded: isExpanded, tagColor: tagColor)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text("웹 브라우저 자동화 (방문 탭 URL 감지)")
-                            .font(.system(size: 12.5, weight: .bold))
-                            .foregroundColor(Config.Colors.ink)
-
-                        Text("필수")
-                            .font(.system(size: 9.5, weight: .bold))
-                            .foregroundColor(tagColor)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1.5)
-                            .background(tagColor.opacity(0.12))
-                            .cornerRadius(4)
-                    }
-
-                    Text("설치된 브라우저(\(permissions.installedBrowsers.map(\.name).joined(separator: ", ")))에서 ChatGPT, Claude.ai 사용을 감지하기 위한 필수 권한입니다. 권한이 없으면 일반 웹서핑과 AI 사용을 구분하지 못합니다.")
-                        .font(.system(size: 11))
-                        .foregroundColor(Config.Colors.mute)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    // 설치된 브라우저별 허용 상태 배지 표시
-                    if !permissions.installedBrowsers.isEmpty {
-                        HStack(spacing: 6) {
-                            ForEach(permissions.installedBrowsers) { browser in
-                                let bGranted = permissions.browserAutomationStatuses[browser.bundleId] ?? false
-                                HStack(spacing: 3) {
-                                    Circle()
-                                        .fill(bGranted ? Color.green : Color.orange)
-                                        .frame(width: 5.5, height: 5.5)
-                                    Text(browser.name)
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundColor(Config.Colors.ink)
-                                }
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Config.Colors.panelBackground)
-                                .cornerRadius(4)
-                            }
-                        }
-                        .padding(.top, 2)
-                    }
-                }
-
-                Spacer()
-
-                if isGranted {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.green)
-                        Text("연동 완료")
-                            .font(.system(size: 11.5, weight: .bold))
-                            .foregroundColor(.green)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.12))
-                    .cornerRadius(6)
-                    .padding(.top, 2)
-                } else {
-                    Button(action: {
-                        permissions.requestAllBrowserAutomation()
-                        withAnimation(.spring()) {
-                            activeGuide = .browser
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Text(isExpanded ? "설정 중…" : "모든 브라우저 한꺼번에 연동")
-                            if isExpanded {
-                                Image(systemName: "arrow.right.circle.fill")
-                            }
-                        }
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(tagColor)
-                    .padding(.top, 2)
-                }
-            }
-
-            // 인라인 안내 가이드 (클릭 시 확장)
             if isExpanded {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "lightbulb.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.orange)
-                        Text("웹 브라우저 연동 방법 안내")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Config.Colors.ink)
-                    }
-
-                    Text("1. [모든 브라우저 한꺼번에 연동]을 누르면 macOS 자동화 권한 허용 및 시스템 설정 창이 열립니다.")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(Config.Colors.ink.opacity(0.85))
-                    Text("2. 'AIFatigueTracker가 Chrome/Safari/Brave을(를) 제어하려고 합니다' 팝업에서 [확인]을 눌러주세요.")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(Config.Colors.ink.opacity(0.85))
-                    Text("3. 시스템 설정 > 자동화 목록에서 AI 피로 기록 앱 하위의 브라우저를 모두 켜주시면 됩니다.")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(Config.Colors.ink.opacity(0.85))
-
-                    HStack {
-                        Spacer()
-                        Button("설정 창 다시 열기") {
-                            permissions.openSystemSettings(pane: "Privacy_Automation")
-                        }
-                        .font(.system(size: 10.5, weight: .medium))
-                        .buttonStyle(.bordered)
-                        .padding(.top, 2)
-                    }
-                }
-                .padding(9)
-                .background(Color.orange.opacity(0.08))
-                .cornerRadius(6)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.orange.opacity(0.25), lineWidth: 0.8))
+                browserCardExpandedGuide
             }
         }
         .padding(11)
         .background(
             RoundedRectangle(cornerRadius: 9)
-                .fill(isGranted ? Color.green.opacity(0.07) : Config.Colors.cardBackground)
+                .fill(Config.Colors.cardBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 9)
-                        .stroke(isGranted ? Color.green.opacity(0.25) : (isExpanded ? Color.orange.opacity(0.4) : Config.Colors.line), lineWidth: isExpanded ? 1.2 : 0.8)
+                        .stroke(isExpanded ? Color.orange.opacity(0.4) : Config.Colors.line, lineWidth: isExpanded ? 1.2 : 0.8)
                 )
         )
     }
 
-    // MARK: - 3단계: 완료 및 시작 안내
-    private var completionStepView: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            // 상단 환영 메시지
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(Color(hex: Config.Colors.accentHex))
-                    Text("모든 설정이 완료되었습니다!")
-                        .font(.system(size: 18, weight: .bold))
+    private func browserCardHeader(isGranted: Bool, isExpanded: Bool, tagColor: Color) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "globe")
+                .font(.system(size: 16))
+                .foregroundColor(isGranted ? Config.Colors.ink.opacity(0.85) : tagColor)
+                .frame(width: 24, height: 24)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("브라우저 연동 (AI 사이트 확인)")
+                        .font(.system(size: 12.5, weight: .bold))
                         .foregroundColor(Config.Colors.ink)
+
+                    Text("필수")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundColor(tagColor)
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 1)
+                        .background(tagColor.opacity(0.1))
+                        .cornerRadius(3)
                 }
 
-                Text("\(inputName)님, 2주간의 AI 피로 연구 참여를 환영합니다.")
-                    .font(.system(size: 13))
+                Text("브라우저에서 AI 도구를 쓰는지 확인해요.")
+                    .font(.system(size: 11))
                     .foregroundColor(Config.Colors.mute)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // 설치된 브라우저 목록 및 실시간 허용 상태 뱃지 (실제 설치된 브라우저만 동적 표시)
+                if !permissions.installedBrowsers.isEmpty {
+                    HStack(spacing: 5) {
+                        ForEach(permissions.installedBrowsers) { browser in
+                            let bGranted = permissions.browserAutomationStatuses[browser.bundleId] == true
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(bGranted ? Color(hex: "#2E7D32") : Color.orange)
+                                    .frame(width: 5.5, height: 5.5)
+                                Text(browser.name)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(Config.Colors.ink)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2.5)
+                            .background(Config.Colors.panelBackground)
+                            .cornerRadius(4)
+                        }
+                    }
+                    .padding(.top, 2)
+                }
             }
 
+            Spacer()
+
+            if isGranted {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9.5, weight: .bold))
+                        .foregroundColor(Color(hex: "#2E7D32"))
+                    Text("허용 완료")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(hex: "#2E7D32"))
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3.5)
+                .background(Color(hex: "#2E7D32").opacity(0.08))
+                .cornerRadius(5)
+                .padding(.top, 2)
+            } else {
+                Button(action: {
+                    permissions.requestAllBrowserAutomation()
+                    withAnimation(.spring()) {
+                        activeGuide = .browser
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Text(isExpanded ? "설정 중…" : "권한 허용하기")
+                        if isExpanded {
+                            Image(systemName: "arrow.right.circle.fill")
+                        }
+                    }
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5.5)
+                    .background(Color(hex: Config.Colors.accentHex))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+        }
+    }
+
+    private var browserCardExpandedGuide: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "lightbulb.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.orange)
+                Text("웹 브라우저 연동 방법 안내")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Config.Colors.ink)
+            }
+
+            Text("1. [권한 허용하기]를 누르면 macOS 자동화 권한 허용 및 시스템 설정 창이 열립니다.")
+                .font(.system(size: 10.5))
+                .foregroundColor(Config.Colors.ink.opacity(0.85))
+            
+            let browserNames = permissions.installedBrowsers.map(\.name).joined(separator: ", ")
+            Text("2. 'AIFatigueTracker가 \(browserNames)을(를) 제어하려고 합니다' 팝업에서 [확인]을 눌러주세요.")
+                .font(.system(size: 10.5))
+                .foregroundColor(Config.Colors.ink.opacity(0.85))
+            Text("3. 시스템 설정 > 개인정보 보호 및 보안 > 자동화 목록에서 브라우저를 모두 켜주시면 됩니다.")
+                .font(.system(size: 10.5))
+                .foregroundColor(Config.Colors.ink.opacity(0.85))
+
+            // 설치된 브라우저별 실시간 연동 상태 표시
+            VStack(alignment: .leading, spacing: 4) {
+                Text("설치된 브라우저별 연동 상태 (모두 켜야 진행 가능):")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(Config.Colors.ink)
+                    .padding(.bottom, 1)
+
+                ForEach(permissions.installedBrowsers, id: \.bundleId) { b in
+                    let isBGranted = permissions.browserAutomationStatuses[b.bundleId] == true
+                    HStack(spacing: 6) {
+                        Image(systemName: isBGranted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundColor(isBGranted ? Color(hex: "#2E7D32") : Color.orange)
+                            .font(.system(size: 10.5))
+                        Text(b.name)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Config.Colors.ink)
+                        Spacer()
+                        Text(isBGranted ? "허용 완료" : "스위치 켜기 필요")
+                            .font(.system(size: 10, weight: isBGranted ? .regular : .semibold))
+                            .foregroundColor(isBGranted ? Color(hex: "#2E7D32") : Color.orange)
+                    }
+                }
+            }
+            .padding(6)
+            .background(Config.Colors.cardBackground)
+            .cornerRadius(5)
+
+            HStack {
+                Spacer()
+                Button("설정 창 다시 열기") {
+                    permissions.openSystemSettings(pane: "Privacy_Automation")
+                }
+                .font(.system(size: 10.5, weight: .medium))
+                .buttonStyle(.bordered)
+                .padding(.top, 2)
+            }
+        }
+        .padding(9)
+        .background(Color.orange.opacity(0.08))
+        .cornerRadius(6)
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.orange.opacity(0.25), lineWidth: 0.8))
+    }
+
+    // MARK: - 3단계: 완료 및 시작 안내
+    private var completionStepView: some View {
+        VStack(alignment: .leading, spacing: 14) {
             // 핵심 이용 방법 카드 3종
             VStack(spacing: 11) {
-                // 1. 메뉴 막대 상주 안내
+                // 1. 메뉴 막대 상시 확인 안내
                 HStack(alignment: .top, spacing: 13) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10)
@@ -677,26 +800,20 @@ public struct OnboardingView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text("1. 상단 메뉴 막대 [🔋>_] 상주")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(Config.Colors.ink)
-                            Text("상시 확인")
-                                .font(.system(size: 9.5, weight: .bold))
-                                .foregroundColor(Color(hex: Config.Colors.accentHex))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1.5)
-                                .background(Color(hex: Config.Colors.accentHex).opacity(0.12))
-                                .cornerRadius(4)
-                        }
+                        Text("1. 메뉴 막대에서 사용 시간을 볼 수 있어요")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Config.Colors.ink)
 
-                        Text("화면 맨 위 메뉴 막대에 아이콘이 고정됩니다. 클릭하면 현재 AI 사용 시간, 주간 통계, 일시정지 설정을 언제든 확인하실 수 있습니다.")
+                        Text("AI 사용 현황과 설정을 한곳에서 볼수 있어요.")
                             .font(.system(size: 11.5))
                             .foregroundColor(Config.Colors.mute)
                             .lineSpacing(2)
                     }
+
+                    Spacer()
                 }
                 .padding(13)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 9)
                         .fill(Config.Colors.cardBackground)
@@ -715,26 +832,20 @@ public struct OnboardingView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text("2. 언제든 피로할 때 단축키 ⌥⌘S")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(Config.Colors.ink)
-                            Text("핵심 기능")
-                                .font(.system(size: 9.5, weight: .bold))
-                                .foregroundColor(.orange)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1.5)
-                                .background(Color.orange.opacity(0.12))
-                                .cornerRadius(4)
-                        }
+                        Text("2. 피곤할 땐 ⌥⌘S")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Config.Colors.ink)
 
-                        Text("AI와 대화하다가 답답하거나 지칠 때, ⌥⌘S (Option + Command + S)를 누르면 그 순간의 화면과 함께 생생한 피로 경험을 30초 만에 기록할 수 있습니다.")
+                        Text("AI 때문에 피곤해지면 언제든 눌러주세요. 30초면 기록할 수 있어요.")
                             .font(.system(size: 11.5))
                             .foregroundColor(Config.Colors.mute)
                             .lineSpacing(2)
                     }
+
+                    Spacer()
                 }
                 .padding(13)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 9)
                         .fill(Config.Colors.cardBackground)
@@ -753,17 +864,20 @@ public struct OnboardingView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("3. 조용하고 안전한 백그라운드 동작")
+                        Text("3. AI를 쓸 때 짧은 설문이 떠요")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(Config.Colors.ink)
 
-                        Text("앱은 별도의 Dock 창 없이 백그라운드에서 최소한의 자원으로 가볍게 동작합니다. 개인정보나 대화 내용은 안전하게 암호화되어 연구 목적 외에는 절대 수집되지 않습니다.")
+                        Text("AI 도구를 쓰는 동안 한 번씩 짧은 설문이 떠요. 뜰 때마다 답해주시면 돼요.")
                             .font(.system(size: 11.5))
                             .foregroundColor(Config.Colors.mute)
                             .lineSpacing(2)
                     }
+
+                    Spacer()
                 }
                 .padding(13)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 9)
                         .fill(Config.Colors.cardBackground)
@@ -779,7 +893,7 @@ public struct OnboardingView: View {
     // MARK: - 하단 버튼 바
     private var bottomButtonBar: some View {
         HStack {
-            if step > 1 {
+            if step > 0 {
                 Button("이전") {
                     withAnimation {
                         step -= 1
@@ -792,8 +906,23 @@ public struct OnboardingView: View {
 
             Spacer()
 
-            if step == 1 {
-                Button("다음 단계") {
+            if step == 0 {
+                Button(action: {
+                    withAnimation {
+                        step = 1
+                    }
+                }) {
+                    Text("시작하기")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 7)
+                        .background(Color(hex: Config.Colors.accentHex))
+                        .cornerRadius(7)
+                }
+                .buttonStyle(.plain)
+            } else if step == 1 {
+                Button(action: {
                     let trimmed = inputName.trimmingCharacters(in: .whitespacesAndNewlines)
                     if trimmed.isEmpty {
                         showErrorText = true
@@ -804,22 +933,28 @@ public struct OnboardingView: View {
                             step = 2
                         }
                     }
+                }) {
+                    Text("다음 단계")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(inputName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.4) : Color(hex: Config.Colors.accentHex))
+                        .cornerRadius(7)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(hex: Config.Colors.accentHex))
-                .font(.system(size: 13, weight: .semibold))
+                .buttonStyle(.plain)
                 .disabled(inputName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             } else if step == 2 {
                 HStack(spacing: 12) {
-                    // 친절한 상태 안내 문구 (3대 필수 권한: 손쉬운 사용 + 화면 기록 + 브라우저 자동화)
+                    // 친절한 상태 안내 문구 (2대 필수 권한: 손쉬운 사용 + 브라우저 자동화)
                     if permissions.isEssentialGranted {
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
+                                .foregroundColor(Color(hex: "#2E7D32"))
                                 .font(.system(size: 12))
                             Text("필수 권한 준비 완료")
-                                .font(.system(size: 11.5, weight: .semibold))
-                                .foregroundColor(.green)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundColor(Color(hex: "#2E7D32"))
                         }
                     } else {
                         HStack(spacing: 4) {
@@ -830,28 +965,19 @@ public struct OnboardingView: View {
                                 Text("손쉬운 사용 권한을 켜주세요")
                                     .font(.system(size: 11))
                                     .foregroundColor(.orange)
-                            } else if !permissions.isScreenCaptureGranted {
-                                Text("화면 기록 권한을 켜주세요")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.orange)
                             } else {
-                                Text("웹 브라우저 자동화 권한을 연동해주세요")
+                                Text("모든 브라우저 자동화 권한을 켜주세요")
                                     .font(.system(size: 11))
                                     .foregroundColor(.orange)
                             }
                         }
                     }
 
-                    Button(permissions.isEssentialGranted ? "다음: 시작 안내 →" : "권한 설정 계속") {
+                    Button(action: {
                         if !permissions.isAccessibilityGranted {
                             permissions.requestAccessibility()
                             withAnimation(.spring()) {
                                 activeGuide = .accessibility
-                            }
-                        } else if !permissions.isScreenCaptureGranted {
-                            permissions.requestScreenCapture()
-                            withAnimation(.spring()) {
-                                activeGuide = .screenCapture
                             }
                         } else if !permissions.isBrowserAutomationGranted {
                             permissions.requestAllBrowserAutomation()
@@ -863,25 +989,36 @@ public struct OnboardingView: View {
                                 step = 3
                             }
                         }
+                    }) {
+                        Text(permissions.isEssentialGranted ? "다음 단계" : "권한 설정 계속")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 7)
+                            .background(Color(hex: Config.Colors.accentHex))
+                            .cornerRadius(7)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(permissions.isEssentialGranted ? Color(hex: Config.Colors.accentHex) : Color.orange)
-                    .font(.system(size: 13, weight: .bold))
+                    .buttonStyle(.plain)
                 }
             } else {
                 // 3단계: 연구 시작 및 메뉴 막대 열기
                 Button(action: {
+                    UserDefaults.standard.removeObject(forKey: "onboarding_current_step")
                     appState.completeOnboarding(name: inputName)
                 }) {
                     HStack(spacing: 6) {
                         Image(systemName: "play.circle.fill")
                             .font(.system(size: 13, weight: .bold))
-                        Text("메뉴 막대 열고 연구 시작하기")
+                        Text("시작하기")
                             .font(.system(size: 13, weight: .bold))
                     }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
+                    .background(Color(hex: Config.Colors.accentHex))
+                    .cornerRadius(7)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(hex: Config.Colors.accentHex))
+                .buttonStyle(.plain)
             }
         }
     }

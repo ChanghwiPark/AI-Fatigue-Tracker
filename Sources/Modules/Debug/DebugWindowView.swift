@@ -48,7 +48,8 @@ public struct DebugWindowView: View {
         .open, .close,        // [1] 생애주기
         .focusIn, .focusOut,  // [2] 집중
         .navigate,            // [3] 전환
-        .idleStart, .idleEnd, .suspend, .resume // [4] 입력·시스템
+        .idleStart, .idleEnd, .suspend, .resume, // [4] 입력·시스템
+        .survey               // [5] 설문
     ]
 
     private static let timeFormatter: DateFormatter = {
@@ -256,8 +257,15 @@ public struct DebugWindowView: View {
                         Button("화면 로그 비우기") {
                             debugStore.clear()
                         }
-                        Button("세션 기록 초기화", role: .destructive) {
+                        Button("세션 기록 초기화") {
                             sessionManager.clearAllSessions()
+                        }
+                        Divider()
+                        Button("전체 데이터 완전 초기화 (로그+세션+설문+DB)", role: .destructive) {
+                            debugStore.clear()
+                            sessionManager.clearAllSessions()
+                            SurveyLogStore.shared.clearAll()
+                            LocalDatabase.shared.clearAllLocalData()
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -1307,6 +1315,8 @@ public struct DebugWindowView: View {
             return .gray
         case .resume:
             return .teal
+        case .survey:
+            return .indigo
         }
     }
 
@@ -1529,8 +1539,8 @@ public struct DebugWindowView: View {
                     .frame(width: 55, alignment: .trailing)
             }
 
-            // 세션 ID
-            if let sid = event.sessionId {
+            // 세션 ID (AI 이벤트인 경우에만 녹색 세션 ID 배지 표시, 비AI 사이 작업은 '-')
+            if event.isAI, let sid = event.sessionId {
                 Text(String(sid.uuidString.prefix(6)))
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(Color(hex: Config.Colors.sageHex))
@@ -1593,8 +1603,21 @@ public struct DebugWindowView: View {
                             .font(.system(size: 10.5, weight: .medium))
                             .foregroundColor(Config.Colors.ink)
                             .lineLimit(1)
+                    } else if let fURL = event.fromURL ?? (event.fromDomain != nil ? event.fromDomain : nil),
+                              let tURL = event.toURL ?? event.url ?? (event.toDomain != nil ? event.toDomain : nil),
+                              fURL != tURL {
+                        // 3. 웹 상세 주소/도메인 전환: [domain] 상세주소A ➔ 상세주소B
+                        Text("[domain]")
+                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            .foregroundColor(.purple)
+                        let cleanFrom = formatDisplayURL(fURL)
+                        let cleanTo = formatDisplayURL(tURL)
+                        Text("\(cleanFrom) ➔ \(cleanTo)")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(.purple)
+                            .lineLimit(1)
                     } else if let fDom = event.fromDomain, let tDom = event.toDomain, fDom != tDom {
-                        // 3. 웹 도메인 전환: [domain] 도메인A ➔ 도메인B
+                        // 3-B. 웹 도메인 전환 폴백: [domain] 도메인A ➔ 도메인B
                         Text("[domain]")
                             .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                             .foregroundColor(.purple)
@@ -1684,12 +1707,25 @@ public struct DebugWindowView: View {
 
             case .close:
                 HStack(spacing: 4) {
-                    Text("[대화/앱 종료]")
+                    let badgeText = event.isAI ? "[대화/앱 종료]" : (event.navType == "window_close" ? "[창 종료]" : "[탭 닫기]")
+                    Text(badgeText)
                         .font(.system(size: 9.5, weight: .bold))
-                        .foregroundColor(.red)
+                        .foregroundColor(event.isAI ? .red : .secondary)
                     Text(event.threadTitle ?? (event.windowTitle.isEmpty ? event.appName : event.windowTitle))
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+
+            case .survey:
+                HStack(spacing: 4) {
+                    let nav = event.navType ?? "survey"
+                    Text("[\(nav)]")
+                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(.indigo)
+                    Text(event.windowTitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Config.Colors.ink)
                         .lineLimit(1)
                 }
             }
@@ -1743,6 +1779,7 @@ public struct DebugWindowView: View {
                 groupBadge(.focus)
                 groupBadge(.transition)
                 groupBadge(.system)
+                groupBadge(.survey)
             }
         }
         .padding(.horizontal, 14)
@@ -1762,6 +1799,8 @@ public struct DebugWindowView: View {
                 return (.purple, Color.purple.opacity(0.12))
             case .system:
                 return (.secondary, Color.gray.opacity(0.12))
+            case .survey:
+                return (.indigo, Color.indigo.opacity(0.12))
             }
         }()
 
@@ -1824,6 +1863,19 @@ public struct DebugWindowView: View {
         }
     }
 
+    private func formatDisplayURL(_ urlStr: String) -> String {
+        var str = urlStr.removingPercentEncoding ?? urlStr
+        if str.hasPrefix("https://") {
+            str = String(str.dropFirst("https://".count))
+        } else if str.hasPrefix("http://") {
+            str = String(str.dropFirst("http://".count))
+        }
+        if str.hasSuffix("/") && str.count > 1 && !str.contains("?") {
+            str = String(str.dropLast())
+        }
+        return str
+    }
+
     private func environmentBadge(_ env: ActivityEvent.EnvironmentCategory) -> some View {
         environmentBadgeString(env.badgeLabel)
     }
@@ -1879,6 +1931,9 @@ public struct DebugWindowView: View {
                 return (.gray, Color.gray.opacity(0.14))
             case "resume":
                 return (.teal, Color.teal.opacity(0.14))
+            // [4] 설문
+            case "survey":
+                return (.indigo, Color.indigo.opacity(0.16))
 
             // 레거시 국문 라벨 호환
             case "대화 시작", "새 대화":
@@ -1891,6 +1946,8 @@ public struct DebugWindowView: View {
                 return (.orange, Color.orange.opacity(0.14))
             case "앱 활성", "앱 비활성", "창 전환", "페이지 이동", "탐색/전환":
                 return (.purple, Color.purple.opacity(0.14))
+            case "설문", "설문 응답", "설문 완료", "설문 건너뛰기":
+                return (.indigo, Color.indigo.opacity(0.16))
             case "자리 비움", "유휴 시작":
                 return (.orange, Color.orange.opacity(0.12))
             case "입력 복귀":
@@ -2222,7 +2279,7 @@ public struct DebugWindowView: View {
                                 .foregroundColor(.blue)
 
                             ForEach(surveyScheduler.activeSnoozes) { snooze in
-                                Button("[\(snooze.type.rawValue)] 즉시 재알림") {
+                                Button("[\(snooze.type.rawValue)] 즉시 재알림 (\(snooze.snoozeCount)/\(Config.Scheduler.maxSnoozeCount)회차)") {
                                     surveyScheduler.triggerSnoozeImmediately(id: snooze.id)
                                 }
                                 .font(.system(size: 10))

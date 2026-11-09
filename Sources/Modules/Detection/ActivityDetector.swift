@@ -15,8 +15,9 @@ public final class ActivityDetector {
     private var currentChatKey: String = ""
     private var currentAppIsAI: Bool = false
     private var currentAppAITool: String? = nil
-    private var lastBrowserTabCount: Int? = nil
-    private var lastBrowserTabId: String? = nil
+    private var lastBrowserTabCounts: [String: Int] = [:]
+    private var lastBrowserTabIds: [String: String] = [:]
+    private var lastActiveBrowserBundleId: String = ""
     private var lastTerminalCommand: String = ""
     private var lastEventTime: Date = Date()
     private var lastEvent: ActivityEvent?
@@ -171,6 +172,7 @@ public final class ActivityDetector {
             self.currentWindowTitle = termInfo.displayTitle
             self.currentAppIsAI = termInfo.isAI
             self.currentAppAITool = termInfo.aiTool
+            self.currentChatKey = termInfo.isAI ? termInfo.threadKey : ""
 
             if let prev = prevApp, prev.processIdentifier != app.processIdentifier {
                 emitEvent(
@@ -180,6 +182,8 @@ public final class ActivityDetector {
                     windowTitle: termInfo.displayTitle,
                     isAI: termInfo.isAI,
                     aiTool: termInfo.aiTool,
+                    threadKey: termInfo.threadKey,
+                    threadTitle: termInfo.displayTitle,
                     fromApp: previousAppName,
                     fromTitle: previousTitle,
                     toApp: appName,
@@ -207,18 +211,25 @@ public final class ActivityDetector {
             let tabInfo = BrowserTracker.shared.fetchActiveTab(for: bundleId, pid: app.processIdentifier)
             let tabURL = tabInfo?.url ?? ""
             let tabTitle = (tabInfo?.title.isEmpty == false) ? tabInfo!.title : (windowTitle.isEmpty ? appName : windowTitle)
-            let isAI = tabInfo?.isAI ?? false
-            let aiTool = tabInfo?.aiTool
-            let threadKey = tabInfo?.threadKey
-            let threadTitle = tabInfo?.threadTitle
+            let isAuth = BrowserTracker.isAuthOrLoginPage(url: tabURL, title: tabTitle)
+            let isAI = isAuth ? false : (tabInfo?.isAI ?? false)
+            let aiTool = isAuth ? nil : tabInfo?.aiTool
+            let threadKey = isAuth ? nil : tabInfo?.threadKey
+            let threadTitle = isAuth ? nil : tabInfo?.threadTitle
 
+            let prevURL = self.currentBrowserURL
+            self.lastActiveBrowserBundleId = bundleId
             self.currentBrowserURL = tabURL
             self.currentWindowTitle = tabTitle
             self.currentAppIsAI = isAI
             self.currentAppAITool = aiTool
             self.currentChatKey = threadKey ?? ""
-            self.lastBrowserTabCount = tabInfo?.tabCount
-            self.lastBrowserTabId = tabInfo?.tabId
+            if let count = tabInfo?.tabCount {
+                self.lastBrowserTabCounts[bundleId] = count
+            }
+            if let id = tabInfo?.tabId {
+                self.lastBrowserTabIds[bundleId] = id
+            }
 
             if let prev = prevApp, prev.processIdentifier != app.processIdentifier {
                 emitEvent(
@@ -236,8 +247,10 @@ public final class ActivityDetector {
                     toApp: appName,
                     toTitle: tabTitle,
                     navType: "app",
-                    fromDomain: URL(string: currentBrowserURL)?.host,
-                    toDomain: URL(string: tabURL)?.host
+                    fromDomain: URL(string: prevURL)?.host,
+                    toDomain: URL(string: tabURL)?.host,
+                    fromURL: prevURL.isEmpty ? nil : prevURL,
+                    toURL: tabURL.isEmpty ? nil : tabURL
                 )
             }
 
@@ -390,12 +403,14 @@ public final class ActivityDetector {
         let (isAI, aiTool) = checkAI(for: bundleId, windowTitle: newTitle, appName: appName)
         let isIDE = isAI || bundleId.contains("antigravity") || bundleId.contains("cursor") || bundleId.contains("VSCode")
         let isNewDoc = isNewDocumentTitle(newTitle, appName: appName, isIDE: isIDE)
+        let aiStateChanged = (isAI != currentAppIsAI)
 
         let isBrandNewWindow = (newWinId != nil && !knownWindowIds.contains(newWinId!))
         let previousCount = appWindowCounts[app.processIdentifier] ?? 0
         let windowCountIncreased = winCount > previousCount && previousCount > 0
+        let isAuxiliaryDialog = isModalOrDialogTitle(newTitle)
 
-        if isBrandNewWindow || (windowCountIncreased && (isNewDoc || newTitle != currentWindowTitle)) {
+        if !isAuxiliaryDialog && (isBrandNewWindow || (windowCountIncreased && (isNewDoc || newTitle != currentWindowTitle))) {
             // [새 창/새 문서/새 세션 생성: open 즉시 발행 후 focus_in으로 전환]
             if let wid = newWinId {
                 knownWindowIds.insert(wid)
@@ -404,6 +419,8 @@ public final class ActivityDetector {
             appWindowCounts[app.processIdentifier] = winCount
             let oldTitle = currentWindowTitle
             self.currentWindowTitle = newTitle
+            self.currentAppIsAI = isAI
+            self.currentAppAITool = aiTool
 
             let displayTitle = isNewDoc ? "새 창·문서 생성: \(newTitle)" : newTitle
 
@@ -431,8 +448,8 @@ public final class ActivityDetector {
                 navType: "focus_in",
                 windowId: newWinId
             )
-        } else if (!newTitle.isEmpty && newTitle != currentWindowTitle) || (newWinId != nil && newWinId != currentWindowId) {
-            // [기존 창 간 전환 또는 창 제목 변경]
+        } else if (!newTitle.isEmpty && newTitle != currentWindowTitle) || (newWinId != nil && newWinId != currentWindowId) || aiStateChanged {
+            // [기존 창 간 전환 또는 창 제목/AI 상태 변경]
             // 앱 활성화 직후 1.0초 이내에는 창 제목 지연 로딩으로 인한 중복 창 전환(navigate) 발생을 억제하고 현재 제목만 갱신
             if Date().timeIntervalSince(lastAppActivationTime) < 1.0 {
                 if let wid = newWinId {
@@ -440,6 +457,8 @@ public final class ActivityDetector {
                     self.currentWindowId = wid
                 }
                 self.currentWindowTitle = newTitle
+                self.currentAppIsAI = isAI
+                self.currentAppAITool = aiTool
                 appWindowCounts[app.processIdentifier] = winCount
                 return
             }
@@ -450,10 +469,35 @@ public final class ActivityDetector {
             }
             appWindowCounts[app.processIdentifier] = winCount
             let oldTitle = currentWindowTitle
-            self.currentWindowTitle = newTitle
+            let wasAI = self.currentAppIsAI
+            let prevAITool = self.currentAppAITool
+            let prevTitle = oldTitle.isEmpty ? (prevAITool ?? "AI") : oldTitle
+            let prevChatKey = self.currentChatKey
 
-            // 동일 앱 내에서의 실질적인 창/문서 전환인 경우에만 navigate 및 focus_in 발행
-            if !oldTitle.isEmpty && oldTitle != newTitle {
+            if wasAI && !isAI {
+                // AI 작업 종료 -> close 이벤트 발행
+                emitEvent(
+                    type: .close,
+                    appName: appName,
+                    bundleId: bundleId,
+                    windowTitle: "AI 세션 종료: \(prevTitle)",
+                    isAI: true,
+                    aiTool: prevAITool,
+                    threadKey: prevChatKey.isEmpty ? nil : prevChatKey,
+                    threadTitle: prevTitle,
+                    navType: "command_exit"
+                )
+            }
+
+            self.currentWindowTitle = newTitle
+            self.currentAppIsAI = isAI
+            self.currentAppAITool = aiTool
+            if !isAI {
+                self.currentChatKey = ""
+            }
+
+            // 동일 앱 내에서의 실질적인 창/문서/AI 전환인 경우에만 navigate 및 focus_in 발행
+            if (!oldTitle.isEmpty && oldTitle != newTitle) || aiStateChanged {
                 emitEvent(
                     type: .navigate,
                     appName: appName,
@@ -463,7 +507,7 @@ public final class ActivityDetector {
                     aiTool: aiTool,
                     fromTitle: oldTitle,
                     toTitle: newTitle,
-                    navType: "window",
+                    navType: isAI ? "chat" : "window",
                     windowId: newWinId
                 )
                 emitEvent(
@@ -530,6 +574,11 @@ public final class ActivityDetector {
         return false
     }
 
+    private func isModalOrDialogTitle(_ title: String) -> Bool {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return t == "open" || t == "열기" || t == "save" || t == "저장" || t == "save as" || t == "다른 이름으로 저장" || t == "print" || t == "인쇄"
+    }
+
     private var lastBrowserCheckTime: Date = Date.distantPast
 
     private func checkBrowserTab(for bundleId: String, appName: String, pid: pid_t) {
@@ -546,8 +595,8 @@ public final class ActivityDetector {
                     self.currentBrowserURL = ""
                     self.currentWindowTitle = ""
                     self.currentChatKey = ""
-                    self.lastBrowserTabCount = nil
-                    self.lastBrowserTabId = nil
+                    self.lastBrowserTabCounts.removeValue(forKey: bundleId)
+                    self.lastBrowserTabIds.removeValue(forKey: bundleId)
 
                     emitEvent(
                         type: .close,
@@ -571,51 +620,113 @@ public final class ActivityDetector {
             return
         }
 
-        // 1. 탭 닫힘 검사 (Cmd + W 등으로 탭 개수가 감소한 경우)
-        if let prevCount = lastBrowserTabCount, let currentCount = tabInfo.tabCount, currentCount < prevCount {
-            let closedTitle = currentWindowTitle.isEmpty ? "탭" : currentWindowTitle
-            emitEvent(
-                type: .close,
-                appName: appName,
-                bundleId: bundleId,
-                windowTitle: "탭 닫기: \(closedTitle)",
-                url: currentBrowserURL.isEmpty ? nil : currentBrowserURL,
-                isAI: currentAppIsAI,
-                aiTool: currentAppAITool,
-                threadKey: currentChatKey.isEmpty ? nil : currentChatKey,
-                threadTitle: currentWindowTitle,
-                navType: "tab_close"
-            )
+        // 로그인/인증 페이지인 경우 AI 속성 완벽 격리 (비AI 일반 웹 탐색으로 처리)
+        let isAuth = BrowserTracker.isAuthOrLoginPage(url: tabInfo.url, title: tabInfo.title)
+        let effectiveIsAI = !isAuth && tabInfo.isAI
+        let effectiveAITool = effectiveIsAI ? tabInfo.aiTool : nil
+        let effectiveThreadKey = effectiveIsAI ? tabInfo.threadKey : nil
+        let effectiveThreadTitle = effectiveIsAI ? tabInfo.threadTitle : nil
+
+        // 다른 브라우저에서 방금 전환된 경우(예: Dia -> Chrome), 이전 브라우저와 탭 개수를 비교하지 않음
+        let isBrowserSwitched = (lastActiveBrowserBundleId != bundleId)
+        self.lastActiveBrowserBundleId = bundleId
+
+        let prevCount = lastBrowserTabCounts[bundleId]
+        let prevId = lastBrowserTabIds[bundleId]
+
+        // 1. 탭 닫힘 검사 (동일 브라우저 내에서 이전 탭 수가 있고, 현재 탭 수가 감소했을 때만)
+        if !isBrowserSwitched, let prevCount = prevCount, let currentCount = tabInfo.tabCount, currentCount < prevCount {
+            let currentTabStillActive = (!currentChatKey.isEmpty && tabInfo.threadKey == currentChatKey) ||
+                                        (!currentWindowTitle.isEmpty && tabInfo.title == currentWindowTitle)
+
+            if currentTabStillActive {
+                // 현재 활성 탭이 그대로 유지된 채 다른 백그라운드 탭이 닫힌 경우:
+                // 현재 활성 AI 세션을 닫으면 안 됨 (isAI: false, threadKey: nil 로 발행하여 일반 비AI 탭 닫힘으로 기록)
+                emitEvent(
+                    type: .close,
+                    appName: appName,
+                    bundleId: bundleId,
+                    windowTitle: "다른 탭 닫기",
+                    url: nil,
+                    isAI: false,
+                    aiTool: nil,
+                    threadKey: nil,
+                    threadTitle: nil,
+                    navType: "background_tab_close"
+                )
+            } else {
+                // 직전에 보고 있던 활성 탭 자체가 닫혀서 다른 탭으로 포커스가 이동한 경우
+                let closedTitle = currentWindowTitle.isEmpty ? "탭" : currentWindowTitle
+                let isAuthClose = BrowserTracker.isAuthOrLoginPage(url: currentBrowserURL, title: closedTitle)
+                let closeIsAI = isAuthClose ? false : currentAppIsAI
+                let closeTool = isAuthClose ? nil : currentAppAITool
+                let closeKey = isAuthClose ? nil : (currentChatKey.isEmpty ? nil : currentChatKey)
+
+                emitEvent(
+                    type: .close,
+                    appName: appName,
+                    bundleId: bundleId,
+                    windowTitle: "탭 닫기: \(closedTitle)",
+                    url: currentBrowserURL.isEmpty ? nil : currentBrowserURL,
+                    isAI: closeIsAI,
+                    aiTool: closeTool,
+                    threadKey: closeKey,
+                    threadTitle: isAuthClose ? nil : currentWindowTitle,
+                    navType: "tab_close"
+                )
+            }
         }
 
         // 2. 새 탭 열림 및 변경 여부 판별
         let isNewTab = isNewTabURL(tabInfo.url, title: tabInfo.title)
-        let tabCountIncreased = (lastBrowserTabCount != nil && tabInfo.tabCount != nil && tabInfo.tabCount! > lastBrowserTabCount!)
-        let tabIdChanged = (lastBrowserTabId != nil && tabInfo.tabId != nil && tabInfo.tabId != lastBrowserTabId)
-        let urlChanged = (tabInfo.url != currentBrowserURL)
-        let titleChanged = (!tabInfo.title.isEmpty && tabInfo.title != currentWindowTitle)
-        let chatChanged = (tabInfo.threadKey != nil && tabInfo.threadKey != currentChatKey)
+        let tabCountIncreased = (!isBrowserSwitched && prevCount != nil && tabInfo.tabCount != nil && tabInfo.tabCount! > prevCount!)
+        let tabIdChanged = (!isBrowserSwitched && prevId != nil && tabInfo.tabId != nil && tabInfo.tabId != prevId)
+        let urlChanged = (!currentBrowserURL.isEmpty && tabInfo.url != currentBrowserURL)
+        let titleChanged = (!currentWindowTitle.isEmpty && !tabInfo.title.isEmpty && tabInfo.title != currentWindowTitle)
+        let chatChanged = (effectiveThreadKey ?? "") != currentChatKey
+
+        // 초기 브라우저 URL이 비어있는 상태에서 최초 감지된 경우: 앱 전환(handleAppActivated)으로 이미 포커스되었으므로 URL 전이 이벤트는 발행하지 않고 상태만 동기화
+        if currentBrowserURL.isEmpty {
+            self.currentBrowserURL = tabInfo.url
+            self.currentWindowTitle = tabInfo.title.isEmpty ? currentWindowTitle : tabInfo.title
+            self.currentChatKey = effectiveThreadKey ?? ""
+            self.currentAppIsAI = effectiveIsAI
+            self.currentAppAITool = effectiveAITool
+            if let count = tabInfo.tabCount {
+                self.lastBrowserTabCounts[bundleId] = count
+            }
+            if let id = tabInfo.tabId {
+                self.lastBrowserTabIds[bundleId] = id
+            }
+            return
+        }
 
         // 신규 탭 생성 여부: 탭 개수 증가, 새 탭 ID, 또는 기존 일반 URL에서 새 탭 화면으로 새로 전환된 경우 단 1회만 true
         let isBrandNewTab = isNewTab && (tabCountIncreased || tabIdChanged || !isNewTabURL(currentBrowserURL, title: currentWindowTitle))
 
         if isBrandNewTab || urlChanged || titleChanged || chatChanged {
-            // 앱 활성화 직후 1.0초 이내에는 이미 handleAppActivated에서 전환을 처리했으므로 메타데이터만 동기화
-            if Date().timeIntervalSince(lastAppActivationTime) < 1.0 {
+            // 앱 활성화 직후 1.5초 이내에는 이미 handleAppActivated에서 전환을 처리했으므로 메타데이터만 동기화
+            if Date().timeIntervalSince(lastAppActivationTime) < 1.5 {
                 self.currentBrowserURL = tabInfo.url
                 self.currentWindowTitle = tabInfo.title.isEmpty ? currentWindowTitle : tabInfo.title
-                self.currentChatKey = tabInfo.threadKey ?? ""
-                self.currentAppIsAI = tabInfo.isAI
-                self.currentAppAITool = tabInfo.aiTool
-                self.lastBrowserTabCount = tabInfo.tabCount
-                self.lastBrowserTabId = tabInfo.tabId
+                self.currentChatKey = effectiveThreadKey ?? ""
+                self.currentAppIsAI = effectiveIsAI
+                self.currentAppAITool = effectiveAITool
+                if let count = tabInfo.tabCount {
+                    self.lastBrowserTabCounts[bundleId] = count
+                }
+                if let id = tabInfo.tabId {
+                    self.lastBrowserTabIds[bundleId] = id
+                }
                 return
             }
 
+            let fromURL = currentBrowserURL.isEmpty ? nil : currentBrowserURL
+            let toURL = tabInfo.url.isEmpty ? nil : tabInfo.url
             let fromDomain = URL(string: currentBrowserURL)?.host
             let toDomain = URL(string: tabInfo.url)?.host
             let fromChatId = currentChatKey
-            let toChatId = tabInfo.threadKey
+            let toChatId = effectiveThreadKey
 
             let rawTitle = tabInfo.title.isEmpty ? currentWindowTitle : tabInfo.title
             let displayTitle = (isNewTab && (rawTitle.isEmpty || rawTitle == "새 탭" || rawTitle == "New Tab")) ? "새 탭 생성" : rawTitle
@@ -623,9 +734,9 @@ public final class ActivityDetector {
             // 실제 탭 제목을 상태로 저장하여 매 폴링 시 titleChanged가 무한 참이 되는 루프 방지
             self.currentBrowserURL = tabInfo.url
             self.currentWindowTitle = rawTitle
-            self.currentChatKey = tabInfo.threadKey ?? ""
-            self.currentAppIsAI = tabInfo.isAI
-            self.currentAppAITool = tabInfo.aiTool
+            self.currentChatKey = effectiveThreadKey ?? ""
+            self.currentAppIsAI = effectiveIsAI
+            self.currentAppAITool = effectiveAITool
 
             if isBrandNewTab {
                 // 새 탭이 열린 그 순간 단 1회만 open 발행 후 focus_in 연계
@@ -635,15 +746,17 @@ public final class ActivityDetector {
                     bundleId: bundleId,
                     windowTitle: displayTitle,
                     url: tabInfo.url.isEmpty ? nil : tabInfo.url,
-                    isAI: tabInfo.isAI,
-                    aiTool: tabInfo.aiTool,
-                    threadKey: tabInfo.threadKey,
-                    threadTitle: tabInfo.threadTitle,
+                    isAI: effectiveIsAI,
+                    aiTool: effectiveAITool,
+                    threadKey: effectiveThreadKey,
+                    threadTitle: effectiveThreadTitle,
                     navType: "new_window",
                     fromDomain: fromDomain,
                     toDomain: toDomain,
                     fromChatId: fromChatId,
-                    toChatId: toChatId
+                    toChatId: toChatId,
+                    fromURL: fromURL,
+                    toURL: toURL
                 )
                 emitEvent(
                     type: .focusIn,
@@ -651,32 +764,36 @@ public final class ActivityDetector {
                     bundleId: bundleId,
                     windowTitle: rawTitle.isEmpty ? "새 탭" : rawTitle,
                     url: tabInfo.url.isEmpty ? nil : tabInfo.url,
-                    isAI: tabInfo.isAI,
-                    aiTool: tabInfo.aiTool,
-                    threadKey: tabInfo.threadKey,
-                    threadTitle: tabInfo.threadTitle,
+                    isAI: effectiveIsAI,
+                    aiTool: effectiveAITool,
+                    threadKey: effectiveThreadKey,
+                    threadTitle: effectiveThreadTitle,
                     navType: "focus_in",
                     fromDomain: fromDomain,
                     toDomain: toDomain,
                     fromChatId: fromChatId,
-                    toChatId: toChatId
+                    toChatId: toChatId,
+                    fromURL: fromURL,
+                    toURL: toURL
                 )
-            } else if tabInfo.isAI {
+            } else if effectiveIsAI {
                 emitEvent(
                     type: .navigate,
                     appName: appName,
                     bundleId: bundleId,
                     windowTitle: displayTitle,
                     url: tabInfo.url.isEmpty ? nil : tabInfo.url,
-                    isAI: tabInfo.isAI,
-                    aiTool: tabInfo.aiTool,
-                    threadKey: tabInfo.threadKey,
-                    threadTitle: tabInfo.threadTitle,
+                    isAI: true,
+                    aiTool: effectiveAITool,
+                    threadKey: effectiveThreadKey,
+                    threadTitle: effectiveThreadTitle,
                     navType: "chat",
                     fromDomain: fromDomain,
                     toDomain: toDomain,
                     fromChatId: fromChatId,
-                    toChatId: toChatId
+                    toChatId: toChatId,
+                    fromURL: fromURL,
+                    toURL: toURL
                 )
                 emitEvent(
                     type: .focusIn,
@@ -684,10 +801,10 @@ public final class ActivityDetector {
                     bundleId: bundleId,
                     windowTitle: displayTitle,
                     url: tabInfo.url.isEmpty ? nil : tabInfo.url,
-                    isAI: tabInfo.isAI,
-                    aiTool: tabInfo.aiTool,
-                    threadKey: tabInfo.threadKey,
-                    threadTitle: tabInfo.threadTitle
+                    isAI: true,
+                    aiTool: effectiveAITool,
+                    threadKey: effectiveThreadKey,
+                    threadTitle: effectiveThreadTitle
                 )
             } else {
                 emitEvent(
@@ -698,11 +815,13 @@ public final class ActivityDetector {
                     url: tabInfo.url.isEmpty ? nil : tabInfo.url,
                     isAI: false,
                     aiTool: nil,
-                    navType: "url",
+                    navType: isAuth ? "auth" : "url",
                     fromDomain: fromDomain,
                     toDomain: toDomain,
                     fromChatId: fromChatId,
-                    toChatId: toChatId
+                    toChatId: toChatId,
+                    fromURL: fromURL,
+                    toURL: toURL
                 )
                 emitEvent(
                     type: .focusIn,
@@ -717,11 +836,41 @@ public final class ActivityDetector {
         }
 
         // 현재 탭 개수 및 ID 갱신 (다음 폴링 시 정확한 증감 및 변경 감지 보장)
-        self.lastBrowserTabCount = tabInfo.tabCount
-        self.lastBrowserTabId = tabInfo.tabId
+        if let count = tabInfo.tabCount {
+            self.lastBrowserTabCounts[bundleId] = count
+        }
+        if let id = tabInfo.tabId {
+            self.lastBrowserTabIds[bundleId] = id
+        }
     }
 
     private func checkTerminalState(for bundleId: String, appName: String, pid: pid_t) {
+        if !hasOpenWindows(for: pid) {
+            if self.currentAppIsAI, !self.currentWindowTitle.isEmpty {
+                let closedTitle = self.currentWindowTitle
+                let tool = self.currentAppAITool
+                let chatKey = self.currentChatKey
+                self.currentAppIsAI = false
+                self.currentAppAITool = nil
+                self.currentWindowTitle = ""
+                self.currentChatKey = ""
+                self.lastTerminalCommand = ""
+
+                emitEvent(
+                    type: .close,
+                    appName: appName,
+                    bundleId: bundleId,
+                    windowTitle: "터미널 창 종료: \(closedTitle)",
+                    isAI: true,
+                    aiTool: tool,
+                    threadKey: chatKey.isEmpty ? nil : chatKey,
+                    threadTitle: closedTitle,
+                    navType: "window_close"
+                )
+            }
+            return
+        }
+
         let rawTitle = fetchWindowTitle(for: pid)
         let termInfo = TerminalTracker.shared.fetchActiveTerminalInfo(
             for: bundleId,
@@ -741,14 +890,36 @@ public final class ActivityDetector {
                 self.currentAppIsAI = termInfo.isAI
                 self.currentAppAITool = termInfo.aiTool
                 self.currentWindowTitle = termInfo.displayTitle
+                self.currentChatKey = termInfo.isAI ? termInfo.threadKey : ""
                 return
             }
 
             let oldTitle = currentWindowTitle
+            let wasAI = self.currentAppIsAI
+            let prevAITool = self.currentAppAITool
+            let prevThreadKey = self.currentChatKey.isEmpty ? "terminal_\(bundleId)_\(prevAITool ?? "AI")_\(termInfo.tty ?? "default")" : self.currentChatKey
+            let prevTitle = oldTitle.isEmpty ? (prevAITool ?? "AI") : oldTitle
+
+            if wasAI && (!termInfo.isAI || (termInfo.aiTool != nil && termInfo.aiTool != prevAITool)) {
+                // 이전 터미널 AI CLI 세션 종료 -> 세션 close 이벤트 발행하여 종료 설문([end]) 및 세션 보존 유도
+                emitEvent(
+                    type: .close,
+                    appName: appName,
+                    bundleId: bundleId,
+                    windowTitle: "터미널 AI 종료: \(prevTitle)",
+                    isAI: true,
+                    aiTool: prevAITool,
+                    threadKey: prevThreadKey,
+                    threadTitle: prevTitle,
+                    navType: "command_exit"
+                )
+            }
+
             self.lastTerminalCommand = termInfo.activeCommand
             self.currentAppIsAI = termInfo.isAI
             self.currentAppAITool = termInfo.aiTool
             self.currentWindowTitle = termInfo.displayTitle
+            self.currentChatKey = termInfo.isAI ? termInfo.threadKey : ""
 
             emitEvent(
                 type: .navigate,
@@ -863,6 +1034,11 @@ public final class ActivityDetector {
             return (true, customTool ?? (appName.isEmpty ? "사용자 등록 AI" : appName))
         }
 
+        // 0-1. 수동 시작된 활성 세션 검사 (수동으로 시작한 앱/창은 세션 유지 중 항상 AI로 취급)
+        if let manualTool = SessionManager.shared.manualActiveTool(for: bundleId, appName: appName, windowTitle: windowTitle) {
+            return (true, manualTool)
+        }
+
         // 1. 데스크톱 전용 AI 앱 (정확한 Bundle ID 매칭)
         if let toolName = Config.Detection.aiDesktopApps[bundleId] {
             return (true, toolName)
@@ -887,6 +1063,9 @@ public final class ActivityDetector {
         }
         if (bLower.contains("anthropic") && bLower.contains("claude")) || aLower == "claude" {
             return (true, "Claude")
+        }
+        if bLower.contains("gemini") || aLower == "gemini" || aLower.contains("gemini") {
+            return (true, "Gemini")
         }
         if bLower.contains("lmstudio") || bLower.contains("lm-studio") || aLower.contains("lm studio") {
             return (true, "LM Studio")
@@ -917,6 +1096,7 @@ public final class ActivityDetector {
         }
 
         // 3. 사내 메신저(Slack, Teams, Discord, 카카오워크, 잔디 등) 내 AI 봇 대화 감지
+        // 일반 대화 채널이나 메시지 본문 언급은 제외하고 명시적인 AI 봇 대화인 경우에만 감지
         let isMessenger = bLower.contains("slack") ||
                           bLower.contains("teams") ||
                           bLower.contains("discord") ||
@@ -925,7 +1105,7 @@ public final class ActivityDetector {
                           bLower.contains("lineworks")
         if isMessenger {
             let lowerTitle = windowTitle.lowercased()
-            let botKeywords = ["claude", "chatgpt", "copilot", "ai bot", "챗봇", "인공지능", "gpt", "assistant", "ai 비서", "사내 ai", "ask-ai"]
+            let botKeywords = ["ai bot", "챗봇", "인공지능 비서", "ai 비서", "사내 ai", "ask-ai", "copilot bot"]
             for botKeyword in botKeywords {
                 if lowerTitle.contains(botKeyword) {
                     let appLabel = aLower.isEmpty ? "메신저" : appName
@@ -981,32 +1161,88 @@ public final class ActivityDetector {
         }
 
         // 6. 웹 브라우저/PWA/웹뷰 창 제목 기반 AI 감지 (Firefox, Zen, Orion, PWA, Chrome 바로가기 창 등)
-        let lowerTitle = windowTitle.lowercased()
-        let webAIKeywords: [(kw: String, tool: String)] = [
-            ("chatgpt", "ChatGPT"),
-            ("claude", "Claude"),
-            ("gemini", "Gemini"),
-            ("perplexity", "Perplexity"),
-            ("deepseek", "DeepSeek"),
-            ("notebooklm", "NotebookLM"),
-            ("copilot", "Copilot"),
-            ("clova x", "Clova X"),
-            ("뤼튼", "뤼튼 (Wrtn)"),
-            ("wrtn", "뤼튼 (Wrtn)"),
-            ("grok", "Grok"),
-            ("mistral", "Mistral Le Chat"),
-            ("poe", "Poe"),
-            ("v0.dev", "v0.dev"),
-            ("bolt.new", "Bolt.new"),
-            ("lovable", "Lovable")
-        ]
-        for item in webAIKeywords {
-            if lowerTitle.contains(item.kw) {
-                return (true, item.tool)
+        let isBrowserOrWeb = isBrowserApp(bundleId: bundleId, appName: appName) ||
+                             bLower.contains("pwa") || bLower.contains("webapp") ||
+                             bLower.contains("electron")
+        let isGeneralDocumentOrSystemApp = bLower.contains("microsoft.word") ||
+                                           bLower.contains("microsoft.excel") ||
+                                           bLower.contains("microsoft.powerpoint") ||
+                                           bLower.contains("apple.pages") ||
+                                           bLower.contains("apple.numbers") ||
+                                           bLower.contains("apple.keynote") ||
+                                           bLower.contains("apple.textedit") ||
+                                           bLower.contains("apple.preview") ||
+                                           bLower.contains("apple.finder") ||
+                                           bLower.contains("apple.notes")
+        if isBrowserOrWeb && !isGeneralDocumentOrSystemApp {
+            // 로그인, 인증, 계정 생성 페이지 등은 AI 키워드가 포함되어 있어도 AI로 분류하지 않음
+            if BrowserTracker.isAuthOrLoginPage(url: nil, title: windowTitle) {
+                return (false, nil)
+            }
+
+            let lowerTitle = windowTitle.lowercased()
+            // 일반 검색, 영상(YouTube), 문서(Docs/Notion) 등의 웹사이트는 AI 도구 자체가 아니므로 제외
+            let nonAISiteSuffixes = [
+                "youtube", "google 검색", "google search", "google docs", "google drive",
+                "google sheets", "google slides", "notion", "naver", "네이버", "wikipedia", "위키백과", "github"
+            ]
+            let isNonAISite = nonAISiteSuffixes.contains { lowerTitle.contains($0) }
+            if !isNonAISite {
+                let webAIKeywords: [(kw: String, tool: String)] = [
+                    ("chatgpt", "ChatGPT"),
+                    ("claude", "Claude"),
+                    ("gemini", "Gemini"),
+                    ("perplexity", "Perplexity"),
+                    ("deepseek", "DeepSeek"),
+                    ("notebooklm", "NotebookLM"),
+                    ("copilot", "Copilot"),
+                    ("clova x", "Clova X"),
+                    ("뤼튼", "뤼튼 (Wrtn)"),
+                    ("wrtn", "뤼튼 (Wrtn)"),
+                    ("grok", "Grok"),
+                    ("mistral", "Mistral Le Chat"),
+                    ("poe", "Poe"),
+                    ("v0.dev", "v0.dev"),
+                    ("bolt.new", "Bolt.new"),
+                    ("lovable", "Lovable")
+                ]
+                for item in webAIKeywords {
+                    if lowerTitle.contains(item.kw) {
+                        return (true, item.tool)
+                    }
+                }
             }
         }
 
         return (false, nil)
+    }
+
+    /// 현재 사용자가 보고 있는 포커스된 창 및 앱의 상세 정보 조회 (메뉴바 수동 세션 시작 및 상태 확인용)
+    public func getCurrentlyFocusedWindowInfo() -> (app: NSRunningApplication?, appName: String, bundleId: String, windowTitle: String, url: String?, windowId: Int?, isAI: Bool, aiTool: String?) {
+        var targetApp = NSWorkspace.shared.frontmostApplication
+        if targetApp?.processIdentifier == ProcessInfo.processInfo.processIdentifier || targetApp == nil {
+            targetApp = self.currentApp
+        }
+
+        let appName = targetApp?.localizedName ?? self.currentApp?.localizedName ?? "AI 도구"
+        let bundleId = targetApp?.bundleIdentifier ?? self.currentApp?.bundleIdentifier ?? "manual.session"
+
+        var winTitle = self.currentWindowTitle
+        var winId = self.currentWindowId
+        if let pid = targetApp?.processIdentifier {
+            let (axTitle, axId, _) = fetchActiveWindowInfo(for: pid)
+            if !axTitle.isEmpty {
+                winTitle = axTitle
+            }
+            if let aid = axId {
+                winId = aid
+            }
+        }
+
+        let url = self.currentBrowserURL.isEmpty ? nil : self.currentBrowserURL
+        let (isAI, aiTool) = checkAI(for: bundleId, windowTitle: winTitle, appName: appName)
+
+        return (targetApp, appName, bundleId, winTitle, url, winId, isAI, aiTool)
     }
 
     // MARK: - 6. 활성 창 정보 추출 (Accessibility 우선 + CoreGraphics 복합)
@@ -1017,6 +1253,10 @@ public final class ActivityDetector {
         // 1. Accessibility API를 통해 실제 활성/포커스된 윈도우와 고유 ID 직접 조회 (100% 실시간 동기화)
         if AXIsProcessTrusted() {
             let appElement = AXUIElementCreateApplication(pid)
+
+            // Electron / 웹뷰 기반 앱(Claude Desktop, ChatGPT, Cursor, VSCode 등)의 AXWebArea 제목 노출 활성화
+            AXUIElementSetAttributeValue(appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+            AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
 
             // 1-A. Focused Window 시도
             var focusedVal: AnyObject?
@@ -1137,6 +1377,10 @@ public final class ActivityDetector {
         guard AXIsProcessTrusted() else { return "" }
         let appElement = AXUIElementCreateApplication(pid)
 
+        // Electron / 웹뷰 기반 앱(Claude Desktop, ChatGPT 등) AXWebArea 접근성 활성화
+        AXUIElementSetAttributeValue(appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+
         // 1. Focused Window 시도
         var windowValue: AnyObject?
         if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &windowValue) == .success,
@@ -1175,7 +1419,17 @@ public final class ActivityDetector {
         if AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue) == .success,
            let title = titleValue as? String {
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed }
+            if !trimmed.isEmpty {
+                // Electron / 웹뷰 기반 앱(Claude, ChatGPT 등)의 경우 창 제목이 단순 앱 이름("Claude", "ChatGPT")으로 고정되는 경우가 많으므로,
+                // 내부 AXWebArea에서 실제 대화 문서 제목 탐색
+                let lower = trimmed.lowercased()
+                if lower == "claude" || lower == "chatgpt" || lower == "chat" || lower == "electron" {
+                    if let webTitle = extractWebAreaTitle(from: windowElement), !webTitle.isEmpty {
+                        return webTitle
+                    }
+                }
+                return trimmed
+            }
         }
 
         // 2. 문서 기반 앱(Preview, TextEdit, Pages, Xcode 등)의 AXDocument 파일 경로/URL 파싱
@@ -1221,6 +1475,63 @@ public final class ActivityDetector {
             }
         }
 
+        // 5. AXWebArea 탐색 (창 제목이 아예 없거나 빈 경우)
+        if let webTitle = extractWebAreaTitle(from: windowElement), !webTitle.isEmpty {
+            return webTitle
+        }
+
+        return nil
+    }
+
+    /// Electron / 웹뷰 기반 데스크톱 앱(Claude, ChatGPT 등)의 AXWebArea 제목 탐색 헬퍼 (BFS, 고속 탐색)
+    private func extractWebAreaTitle(from element: AXUIElement, maxDepth: Int = 16) -> String? {
+        var queue: [(element: AXUIElement, depth: Int)] = [(element, 0)]
+        var visited = 0
+        var candidateTitles: [String] = []
+
+        while !queue.isEmpty && visited < 180 {
+            let (curr, depth) = queue.removeFirst()
+            visited += 1
+
+            var roleVal: AnyObject?
+            if AXUIElementCopyAttributeValue(curr, kAXRoleAttribute as CFString, &roleVal) == .success,
+               let role = roleVal as? String, role == "AXWebArea" {
+                var tVal: AnyObject?
+                if AXUIElementCopyAttributeValue(curr, kAXTitleAttribute as CFString, &tVal) == .success,
+                   let t = tVal as? String {
+                    let tr = t.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let lower = tr.lowercased()
+                    if !tr.isEmpty && lower != "claude" && lower != "chatgpt" && lower != "electron" {
+                        candidateTitles.append(tr)
+                    }
+                }
+                var descVal: AnyObject?
+                if AXUIElementCopyAttributeValue(curr, kAXDescriptionAttribute as CFString, &descVal) == .success,
+                   let desc = descVal as? String {
+                    let tr = desc.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let lower = tr.lowercased()
+                    if !tr.isEmpty && lower != "claude" && lower != "chatgpt" && lower != "electron" {
+                        candidateTitles.append(tr)
+                    }
+                }
+                // AXWebArea 내부에 또 다른 AXWebArea가 중첩되지 않으므로 자식 탐색은 건너뜀 (속도 및 방문수 최적화)
+                continue
+            }
+
+            if depth < maxDepth {
+                var childrenVal: AnyObject?
+                if AXUIElementCopyAttributeValue(curr, kAXChildrenAttribute as CFString, &childrenVal) == .success,
+                   let children = childrenVal as? [AXUIElement] {
+                    for child in children {
+                        queue.append((child, depth + 1))
+                    }
+                }
+            }
+        }
+
+        if let best = candidateTitles.first(where: { !$0.isEmpty }) {
+            return best
+        }
         return nil
     }
 
@@ -1265,6 +1576,8 @@ public final class ActivityDetector {
         toDomain: String? = nil,
         fromChatId: String? = nil,
         toChatId: String? = nil,
+        fromURL: String? = nil,
+        toURL: String? = nil,
         suspendType: String? = nil,
         idleDuration: TimeInterval? = nil,
         suspendDuration: TimeInterval? = nil,
@@ -1312,6 +1625,8 @@ public final class ActivityDetector {
             toDomain: toDomain,
             fromChatId: fromChatId,
             toChatId: toChatId,
+            fromURL: fromURL,
+            toURL: toURL ?? url,
             suspendType: suspendType,
             idleDuration: idleDuration,
             suspendDuration: suspendDuration,

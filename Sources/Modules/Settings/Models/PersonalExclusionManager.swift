@@ -33,7 +33,8 @@ public final class PersonalExclusionManager: ObservableObject {
         ExclusionItem(value: "com.agilebits.onepassword", displayName: "1Password", isBuiltIn: true),
         ExclusionItem(value: "com.agilebits.onepassword7", displayName: "1Password 7", isBuiltIn: true),
         ExclusionItem(value: "com.1password.1password", displayName: "1Password 8", isBuiltIn: true),
-        ExclusionItem(value: "com.bitwarden.desktop", displayName: "Bitwarden", isBuiltIn: true)
+        ExclusionItem(value: "com.bitwarden.desktop", displayName: "Bitwarden", isBuiltIn: true),
+        ExclusionItem(value: "com.kakao.KakaoTalk", displayName: "카카오톡", isBuiltIn: true)
     ]
 
     public let builtInDomains: [ExclusionItem] = [
@@ -116,10 +117,10 @@ public final class PersonalExclusionManager: ObservableObject {
         let bLower = bundleId.lowercased()
 
         // 1. 앱 번들 ID 검사
-        if builtInApps.contains(where: { bLower.contains($0.value) }) {
+        if builtInApps.contains(where: { bLower.contains($0.value) || $0.value.contains(bLower) }) {
             return true
         }
-        if customApps.contains(where: { bLower.contains($0.value) }) {
+        if customApps.contains(where: { bLower.contains($0.value) || $0.value.contains(bLower) }) {
             return true
         }
 

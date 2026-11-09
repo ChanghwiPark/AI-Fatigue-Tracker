@@ -26,12 +26,16 @@ cat << EOF > "$BUILD_TOOLS_DIR/vfs.yaml"
 EOF
 
 RELEASE_MODE=false
+CREATE_DMG=false
 EXTRA_SWIFT_FLAGS=""
 
 for arg in "$@"; do
   case $arg in
     --release)
       RELEASE_MODE=true
+      ;;
+    --dmg)
+      CREATE_DMG=true
       ;;
   esac
 done
@@ -55,8 +59,12 @@ if [ -d "$PROJECT_DIR/Sources/Resources" ]; then
   cp -R "$PROJECT_DIR/Sources/Resources/"* "$APP_BUNDLE/Contents/Resources/"
 fi
 
-# Collect all Swift source files
-SWIFT_FILES=$(find "$PROJECT_DIR/Sources" -name "*.swift")
+# Snapshot Swift sources to prevent editor auto-save / mtime changes during compilation
+SNAPSHOT_DIR="$BUILD_TOOLS_DIR/src_snapshot"
+rm -rf "$SNAPSHOT_DIR"
+mkdir -p "$SNAPSHOT_DIR"
+cp -R "$PROJECT_DIR/Sources/" "$SNAPSHOT_DIR/"
+SWIFT_FILES=$(find "$SNAPSHOT_DIR" -name "*.swift")
 
 # Compile
 swiftc \
@@ -71,4 +79,33 @@ swiftc \
 # Ad-hoc codesign with stable designated requirement for TCC
 codesign --force --deep -s - -r='designated => identifier "com.dxdlab.AIFatigueTracker"' "$APP_BUNDLE" 2>/dev/null || true
 
-echo "✅ Build successful: $APP_BUNDLE"
+# If installed in /Applications, sync the updated build so macOS Quit & Reopen targets the latest build
+if [ -d "/Applications/$APP_NAME.app" ]; then
+  echo "📦 Updating /Applications/$APP_NAME.app with latest build..."
+  rm -rf "/Applications/$APP_NAME.app"
+  cp -R "$APP_BUNDLE" "/Applications/$APP_NAME.app"
+  codesign --force --deep -s - -r='designated => identifier "com.dxdlab.AIFatigueTracker"' "/Applications/$APP_NAME.app" 2>/dev/null || true
+fi
+
+# Refresh macOS LaunchServices registry
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_BUNDLE" 2>/dev/null || true
+if [ -d "/Applications/$APP_NAME.app" ]; then
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/$APP_NAME.app" 2>/dev/null || true
+fi
+
+echo "✅ Build successful: $APP_BUNDLE (and synced to /Applications/$APP_NAME.app)"
+
+# If --dmg requested, generate Drag-and-Drop installer DMG
+if [ "$CREATE_DMG" = true ]; then
+  VERSION="0.1.2"
+  echo "💿 Creating Drag-and-Drop installer DMG (AIFatigueTracker-Pilot-v${VERSION}.dmg)..."
+  STAGING_DIR="/tmp/AIFatigueTracker_DMG_Staging"
+  rm -rf "$STAGING_DIR"
+  mkdir -p "$STAGING_DIR"
+  cp -R "$APP_BUNDLE" "$STAGING_DIR/"
+  ln -s /Applications "$STAGING_DIR/Applications"
+  hdiutil create -volname "AIFatigueTracker Pilot v${VERSION}" -srcfolder "$STAGING_DIR" -ov -format UDZO "$PROJECT_DIR/AIFatigueTracker-Pilot-v${VERSION}.dmg"
+  cp -f "$PROJECT_DIR/AIFatigueTracker-Pilot-v${VERSION}.dmg" "$PROJECT_DIR/AIFatigueTracker-Pilot.dmg"
+  rm -rf "$STAGING_DIR"
+  echo "✅ DMG created: $PROJECT_DIR/AIFatigueTracker-Pilot-v${VERSION}.dmg (and linked to AIFatigueTracker-Pilot.dmg)"
+fi

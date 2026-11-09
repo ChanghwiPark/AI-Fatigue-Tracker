@@ -231,6 +231,10 @@ public final class TerminalTracker {
         return shells.contains(cleaned)
     }
 
+    public func determineAIForTest(activeCommand: String, commandDetails: String?) -> (Bool, String?) {
+        return determineAI(activeCommand: activeCommand, commandDetails: commandDetails)
+    }
+
     private func determineAI(activeCommand: String, commandDetails: String?) -> (Bool, String?) {
         let cmdLower = activeCommand.lowercased()
         let fullLower = commandDetails?.lowercased() ?? ""
@@ -261,9 +265,23 @@ public final class TerminalTracker {
             "cody": "Sourcegraph Cody"
         ]
 
-        // 키워드 매핑 테이블 (터미널 탭 자체의 명령어 및 커맨드라인 인자 검사)
+        // 1단계: 실행 파일(명령어 기본명)과 직접 일치하는지 우선 검사 (예: aider 실행 시 인자에 claude가 있어도 aider로 우선 판정)
         for (kw, name) in aiMap {
-            if cmdLower == kw || cmdLower.contains(kw) || fullLower.contains(kw) {
+            if cmdLower == kw || cmdLower.hasPrefix(kw) {
+                return (true, name)
+            }
+        }
+
+        // 2단계: 실행 파일 이름에 키워드가 포함된 경우
+        for (kw, name) in aiMap {
+            if cmdLower.contains(kw) {
+                return (true, name)
+            }
+        }
+
+        // 3단계: 커맨드라인 전체 인자 및 경로에 포함된 경우 (예: node /opt/homebrew/bin/claude 등)
+        for (kw, name) in aiMap {
+            if fullLower.contains(kw) {
                 return (true, name)
             }
         }

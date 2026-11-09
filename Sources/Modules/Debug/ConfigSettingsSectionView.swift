@@ -115,12 +115,12 @@ public struct ConfigSettingsSectionView: View {
                             }
                         }
 
-                        // 3. '10분 뒤에' 스누즈 대기 (Snooze Duration)
+                        // 3. '5분 뒤에' 스누즈 대기 (Snooze Duration)
                         settingCard(
                             icon: "clock.arrow.circlepath",
                             iconColor: .orange,
-                            title: "'10분 뒤에' 스누즈 (Snooze)",
-                            description: "사용자가 '10분 뒤에' 버튼 클릭 시 재알림까지 대기 시간",
+                            title: "'5분 뒤에' 스누즈 (Snooze)",
+                            description: "사용자가 '5분 뒤에' 버튼 클릭 시 재알림까지 대기 시간 (최대 2회)",
                             currentValueString: ConfigManager.formatDuration(config.snoozeDuration)
                         ) {
                             HStack(spacing: 6) {
@@ -130,10 +130,10 @@ public struct ConfigSettingsSectionView: View {
                                 quickDurationButton(label: "1분", seconds: 60, current: config.snoozeDuration) {
                                     config.snoozeDuration = 60
                                 }
-                                quickDurationButton(label: "5분", seconds: 300, current: config.snoozeDuration) {
+                                quickDurationButton(label: "5분 (표준)", seconds: 300, current: config.snoozeDuration) {
                                     config.snoozeDuration = 300
                                 }
-                                quickDurationButton(label: "10분 (표준)", seconds: 600, current: config.snoozeDuration) {
+                                quickDurationButton(label: "10분", seconds: 600, current: config.snoozeDuration) {
                                     config.snoozeDuration = 600
                                 }
                                 quickDurationButton(label: "15분", seconds: 900, current: config.snoozeDuration) {
@@ -169,12 +169,12 @@ public struct ConfigSettingsSectionView: View {
                                 .font(.system(size: 10.5))
                                 .buttonStyle(QuickButtonStyle(isSelected: config.midSurveyIntervalMin == 60 && config.midSurveyIntervalMax == 120))
 
-                                Button("15~30분") {
-                                    config.midSurveyIntervalMin = 15 * 60
-                                    config.midSurveyIntervalMax = 30 * 60
+                                Button("20~40분 (표준)") {
+                                    config.midSurveyIntervalMin = 20 * 60
+                                    config.midSurveyIntervalMax = 40 * 60
                                 }
                                 .font(.system(size: 10.5))
-                                .buttonStyle(QuickButtonStyle(isSelected: config.midSurveyIntervalMin == 900 && config.midSurveyIntervalMax == 1800))
+                                .buttonStyle(QuickButtonStyle(isSelected: config.midSurveyIntervalMin == 1200 && config.midSurveyIntervalMax == 2400))
 
                                 Button("30~45분") {
                                     config.midSurveyIntervalMin = 30 * 60
@@ -183,7 +183,7 @@ public struct ConfigSettingsSectionView: View {
                                 .font(.system(size: 10.5))
                                 .buttonStyle(QuickButtonStyle(isSelected: config.midSurveyIntervalMin == 1800 && config.midSurveyIntervalMax == 2700))
 
-                                Button("60~120분 (표준)") {
+                                Button("60~120분") {
                                     config.midSurveyIntervalMin = 3600
                                     config.midSurveyIntervalMax = 7200
                                 }
@@ -254,10 +254,30 @@ public struct ConfigSettingsSectionView: View {
                         settingCard(
                             icon: "bell.badge",
                             iconColor: .indigo,
-                            title: "데일리 넛지 시각 & 팝업 끄기 지속",
-                            description: "당일 미기록 시 넛지 발송 시각 및 메뉴 막대 음소거 시간",
-                            currentValueString: "\(String(format: "%02d:%02d", config.dailyNudgeHour, config.dailyNudgeMinute)) (음소거 \(Int(config.muteDuration / 60))분)"
+                            title: "데일리 미기록 넛지 알림",
+                            description: "당일 미기록 시 넛지 발송 여부 및 시각, 메뉴 막대 음소거 시간",
+                            currentValueString: config.isDailyNudgeEnabled
+                                ? "\(String(format: "%02d:%02d", config.dailyNudgeHour, config.dailyNudgeMinute)) (활성화)"
+                                : "꺼짐 (기본값)"
                         ) {
+                            HStack {
+                                Toggle("미기록 넛지 발송 켜기", isOn: $config.isDailyNudgeEnabled)
+                                    .toggleStyle(.switch)
+                                    .font(.system(size: 11.5, weight: .semibold))
+
+                                Spacer()
+
+                                if !config.isDailyNudgeEnabled {
+                                    Text("현재 꺼짐 (디폴트)")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(Config.Colors.mute)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(Config.Colors.line.opacity(0.4))
+                                        .cornerRadius(4)
+                                }
+                            }
+
                             HStack(spacing: 6) {
                                 Button("18:30 (표준)") {
                                     config.dailyNudgeHour = 18
@@ -268,7 +288,7 @@ public struct ConfigSettingsSectionView: View {
 
                                 Button("⚡ 현재+1분 뒤 (테스트)") {
                                     config.setNudgeToNextMinute()
-                                    showToast("데일리 넛지가 1분 뒤로 설정되었습니다.")
+                                    showToast("데일리 넛지가 켜지고 1분 뒤로 설정되었습니다.")
                                 }
                                 .font(.system(size: 10.5))
                                 .buttonStyle(QuickButtonStyle(isSelected: false))
@@ -283,23 +303,25 @@ public struct ConfigSettingsSectionView: View {
                                 }
                             }
 
-                            HStack(spacing: 12) {
-                                Stepper(value: Binding(
-                                    get: { config.dailyNudgeHour },
-                                    set: { config.dailyNudgeHour = ($0 + 24) % 24 }
-                                ), in: 0...23) {
-                                    Text("시(Hour): \(config.dailyNudgeHour)시")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(Config.Colors.mute)
-                                }
+                            if config.isDailyNudgeEnabled {
+                                HStack(spacing: 12) {
+                                    Stepper(value: Binding(
+                                        get: { config.dailyNudgeHour },
+                                        set: { config.dailyNudgeHour = ($0 + 24) % 24 }
+                                    ), in: 0...23) {
+                                        Text("시(Hour): \(config.dailyNudgeHour)시")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(Config.Colors.mute)
+                                    }
 
-                                Stepper(value: Binding(
-                                    get: { config.dailyNudgeMinute },
-                                    set: { config.dailyNudgeMinute = ($0 + 60) % 60 }
-                                ), in: 0...59) {
-                                    Text("분(Min): \(config.dailyNudgeMinute)분")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(Config.Colors.mute)
+                                    Stepper(value: Binding(
+                                        get: { config.dailyNudgeMinute },
+                                        set: { config.dailyNudgeMinute = ($0 + 60) % 60 }
+                                    ), in: 0...59) {
+                                        Text("분(Min): \(config.dailyNudgeMinute)분")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(Config.Colors.mute)
+                                    }
                                 }
                             }
                         }

@@ -12,6 +12,7 @@ public struct SurveyPopupView: View {
     public let surveyType: SurveyType
     public let sessionTitle: String?
     public let aiTool: String?
+    public let snoozeCount: Int
     public let maxContentHeight: CGFloat
     public let onHeightChanged: ((CGFloat) -> Void)?
     public let onAction: (SurveyAction, [String: String]?) -> Void
@@ -23,51 +24,74 @@ public struct SurveyPopupView: View {
     @State private var remainingSeconds: Int = Int(Config.Scheduler.autoDismissDuration)
     @State private var timer: Timer? = nil
     @State private var innerContentHeight: CGFloat
+    @State private var isActionProcessed: Bool = false
+
+    private var canSnooze: Bool {
+        snoozeCount < Config.Scheduler.maxSnoozeCount
+    }
+
+    private let onRetakeAreaCapture: (((@escaping (String?) -> Void) -> Void))?
 
     public init(
         surveyType: SurveyType,
         sessionTitle: String? = nil,
         aiTool: String? = nil,
+        snoozeCount: Int = 0,
+        initialSituation: String? = nil,
         initialFatigue: Int? = nil,
+        initialAIFatigueImpact: Int? = nil,
         initialUsefulness: Int? = nil,
+        initialSelectedCategories: Set<String> = [],
+        initialCapturePath: String? = nil,
         maxContentHeight: CGFloat = 520,
         onHeightChanged: ((CGFloat) -> Void)? = nil,
+        onRetakeAreaCapture: (((@escaping (String?) -> Void) -> Void))? = nil,
         onAction: @escaping (SurveyAction, [String: String]?) -> Void
     ) {
         self.surveyType = surveyType
         self.sessionTitle = sessionTitle
         self.aiTool = aiTool
+        self.snoozeCount = snoozeCount
         self.maxContentHeight = maxContentHeight
         self.onHeightChanged = onHeightChanged
+        self.onRetakeAreaCapture = onRetakeAreaCapture
         self.onAction = onAction
 
         let defaultEstimatedHeight: CGFloat = {
             switch surveyType {
-            case .mid: return 120.0
-            case .start: return 230.0
-            case .end: return 480.0
-            case .diary, .nudge: return 120.0
+            case .mid: return 320.0
+            case .start: return 220.0
+            case .end: return 520.0
+            case .diary, .nudge: return 220.0
+            case .followUp: return 340.0
             }
         }()
         self._innerContentHeight = State(initialValue: defaultEstimatedHeight)
 
-        let initF = initialFatigue ?? (CommandLine.arguments.contains("--test-high-fatigue") ? 8 : nil)
-        // AI 유용성 질문은 [end] AI 세션 종료 설문 전용
-        let initU = (surveyType == .end) ? (initialUsefulness ?? ((CommandLine.arguments.contains("--test-high-usefulness") || CommandLine.arguments.contains("--test-high-fatigue")) ? 4 : nil)) : nil
-        let state = SurveyFormState(fatigueScore: initF, usefulnessScore: initU)
-        if CommandLine.arguments.contains("--test-high-fatigue") {
+        let isTestHigh = CommandLine.arguments.contains("--test-high-fatigue")
+        let initF = initialFatigue ?? (isTestHigh ? 4 : nil)
+        let initImpact = initialAIFatigueImpact ?? (isTestHigh ? 3 : nil)
+        let initU = (surveyType == .end || surveyType == .mid) ? (initialUsefulness ?? ((CommandLine.arguments.contains("--test-high-usefulness") || isTestHigh) ? 4 : nil)) : nil
+        let state = SurveyFormState(
+            fatigueScore: initF,
+            aiFatigueImpactScore: initImpact,
+            usefulnessScore: initU,
+            capturedImagePath: initialCapturePath
+        )
+        if let sit = initialSituation, !sit.isEmpty {
+            state.situationAnswer = SubjectiveAnswer(customText: sit)
+            state.taskPurpose = SubjectiveAnswer(customText: sit)
+        }
+        if !initialSelectedCategories.isEmpty {
+            state.selectedFatigueCategories = initialSelectedCategories
+        } else if isTestHigh {
             state.selectedFatigueCategories = ["overload", "physicalTired"]
-            state.fatigueCategoryDetails["physicalTired"] = SubjectiveAnswer(
-                selectedChips: ["화면을 많이 읽어 눈이 피로해요", "오래 붙잡고 있어 지쳤어요"],
-                customText: "화면을 많이 읽어 눈이 피로해요, 오래 붙잡고 있어 지쳤어요"
-            )
         }
         self._formState = StateObject(wrappedValue: state)
     }
 
-    /// [mid] 및 [nudge] 화면은 340px, 그 외 [start], [end], [diary]는 372px
     private var cardWidth: CGFloat {
-        (surveyType == .mid || surveyType == .nudge) ? Config.Survey.popupMidWidth : Config.Survey.popupDefaultWidth
+        surveyType == .nudge ? Config.Survey.popupMidWidth : Config.Survey.popupDefaultWidth
     }
 
     /// 감지된 AI 도구명 (기본값 ChatGPT)
@@ -85,15 +109,17 @@ public struct SurveyPopupView: View {
     private var sceneTitle: String {
         switch surveyType {
         case .start:
-            return "\(detectedToolName) 사용을 시작했네요"
+            return "\(detectedToolName)로 새 작업을 시작했네요"
         case .mid:
             return "잠깐, 지금 상태를 알려주세요"
         case .end:
-            return "세션을 마쳤어요. 어땠나요?"
+            return "세션을 마쳤네요"
         case .diary:
             return "오늘의 AI 피로 기록"
         case .nudge:
             return "오늘은 AI 때문에 피로한 순간이 있었나요?"
+        case .followUp:
+            return "피로를 느낀 지 30분이 지났네요"
         }
     }
 
@@ -132,8 +158,7 @@ public struct SurveyPopupView: View {
             HStack(spacing: 8) {
                 Button {
                     // "없었어요" -> 응답(answered)으로 기록하되 무응답(timeout)과 명확히 구분
-                    stopCountdown()
-                    onAction(.response, [
+                    performAction(.response, [
                         "nudge_response": "none",
                         "no_fatigue_moment": "true",
                         "fatigue_score": "0"
@@ -156,11 +181,11 @@ public struct SurveyPopupView: View {
                 }
                 .buttonStyle(.plain)
                 .contentShape(Rectangle())
+                .disabled(isActionProcessed)
 
                 Button {
                     // "기록하기" -> 팝업 닫고 미기록 넛지 전용 회고 다이어리(선택적 영역 캡처) 열기
-                    stopCountdown()
-                    onAction(.skip, ["nudge_choice": "record"])
+                    performAction(.skip, ["nudge_choice": "record"])
                 } label: {
                     Text("기록하기")
                         .font(.system(size: 12.5, weight: .bold))
@@ -175,6 +200,7 @@ public struct SurveyPopupView: View {
                 }
                 .buttonStyle(.plain)
                 .contentShape(Rectangle())
+                .disabled(isActionProcessed)
             }
         }
         .padding(16)
@@ -182,7 +208,8 @@ public struct SurveyPopupView: View {
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(Config.Colors.popupBg)
-                .shadow(color: Color.black.opacity(0.15), radius: 16, x: -2, y: 6)
+                .shadow(color: Color.black.opacity(0.04), radius: 3, x: 0, y: 1.5)
+                .shadow(color: Color.black.opacity(0.08), radius: 14, x: 0, y: 5)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -227,7 +254,7 @@ public struct SurveyPopupView: View {
 
             // 2. 본문 영역 (폼이 길지 않으면 스크롤 없이 전체 표시, 화면 초과 시에만 내부 스크롤)
             ScrollView(.vertical, showsIndicators: isOverflowing) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 16) {
                     contentBySurveyType
                 }
                 .padding(16)
@@ -258,7 +285,8 @@ public struct SurveyPopupView: View {
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(Config.Colors.popupBg)
-                .shadow(color: Color.black.opacity(0.15), radius: 16, x: -2, y: 6)
+                .shadow(color: Color.black.opacity(0.04), radius: 3, x: 0, y: 1.5)
+                .shadow(color: Color.black.opacity(0.08), radius: 14, x: 0, y: 5)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -297,137 +325,164 @@ public struct SurveyPopupView: View {
             endSurveyContent
         case .diary, .nudge:
             diaryOrNudgeContent
+        case .followUp:
+            followUpContent
         }
     }
 
-    // MARK: - [start] 장면 01 콘텐츠
-    // 1. "무엇을 위해 AI를 사용하려 하나요?" 주관식 한 줄. 아래 "특별한 목적 없음" 칩 하나만 (누르면 비활성화).
-    // 2. 피로 척도 (0~10)
-    // 3. 유용성 척도 (1~5)
+    // MARK: - [start] 장면 01 시작 콘텐츠 (사용 목적, AI가 하는 일, 내가 하는 일, 피로도, 그 외의 이유)
     private var startSurveyContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // 문항 1. 목적 주관식 + "특별한 목적 없음" 칩
-            VStack(alignment: .leading, spacing: 6) {
-                Text("무엇을 위해 AI를 사용하려 하나요?")
-                    .font(.system(size: 12.5, weight: .bold))
-                    .foregroundColor(Config.Colors.ink)
-
-                SubjectiveInputFieldView(
-                    label: nil,
-                    placeholder: formState.startPurpose.isNoSpecificPurpose ? "특별한 목적 없음" : "작업 목표나 기대하는 결과물을 적어주세요.",
-                    fieldKey: "start_purpose",
-                    chipOptions: [],
-                    isSingleLine: true,
-                    isDisabled: formState.startPurpose.isNoSpecificPurpose,
-                    onFocusChanged: { isFocused in
-                        formState.isTextFieldFocused = isFocused
-                    },
-                    answer: $formState.startPurpose
-                )
-
-                // 아래 "특별한 목적 없음" 칩 하나만
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        formState.toggleNoSpecificPurpose()
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        if formState.startPurpose.isNoSpecificPurpose {
-                            Text("✓")
-                                .font(.system(size: 10, weight: .bold))
-                        }
-                        Text("특별한 목적 없음")
-                            .font(.system(size: 11))
-                    }
-                    .foregroundColor(formState.startPurpose.isNoSpecificPurpose ? Color(hex: Config.Colors.accentHex) : Config.Colors.ink)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(formState.startPurpose.isNoSpecificPurpose ? Color(hex: Config.Colors.accentHex).opacity(0.12) : Config.Colors.paper)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .stroke(formState.startPurpose.isNoSpecificPurpose ? Color(hex: Config.Colors.accentHex) : Config.Colors.line, lineWidth: 0.8)
-                            )
-                    )
+        VStack(alignment: .leading, spacing: 16) {
+            TaskRoleDivisionSectionView(
+                surveyType: .start,
+                taskPurpose: $formState.taskPurpose,
+                aiRole: $formState.aiRole,
+                myRole: $formState.myRole,
+                capturedImagePath: $formState.capturedImagePath,
+                onRetakeAreaCapture: onRetakeAreaCapture,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
                 }
-                .buttonStyle(.plain)
-            }
+            )
 
             Divider()
+                .background(Config.Colors.line.opacity(0.5))
 
-            // 문항 2. 피로 척도
-            FatigueScaleView(score: $formState.fatigueScore)
-
-            // 피로 6점 이상일 때 후속 질문 (피로 질문 바로 밑, 절제된 부드러운 페이드 인)
-            if formState.isHighFatigue {
-                DeepFatigueSectionView(formState: formState)
-                    .transition(.opacity)
-            }
+            FatigueAndAIReasonSectionView(
+                surveyType: .start,
+                fatigueScore: $formState.fatigueScore,
+                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                fatigueReasonAI: $formState.fatigueReasonAI,
+                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
         }
     }
 
-    // MARK: - [mid] 장면 02 콘텐츠
-    // 폭 340px. 피로 척도만 (6점 이상 시 피로 후속 질문).
+    // MARK: - [mid] 장면 02 중간 콘텐츠 (사용 목적/캡처, AI·내 역할, 피로도, AI 피로도 & 이유, 그 외 이유, AI 유용성 & 이유)
     private var midSurveyContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // 1. 피로 척도
-            FatigueScaleView(score: $formState.fatigueScore)
+        VStack(alignment: .leading, spacing: 16) {
+            TaskRoleDivisionSectionView(
+                surveyType: .mid,
+                taskPurpose: $formState.taskPurpose,
+                aiRole: $formState.aiRole,
+                myRole: $formState.myRole,
+                capturedImagePath: $formState.capturedImagePath,
+                onRetakeAreaCapture: onRetakeAreaCapture,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
 
-            // 피로 6점 이상일 때 후속 질문 (피로 질문 바로 밑, 절제된 부드러운 페이드 인)
-            if formState.isHighFatigue {
-                DeepFatigueSectionView(formState: formState)
-                    .transition(.opacity)
-            }
+            Divider()
+                .background(Config.Colors.line.opacity(0.5))
+
+            FatigueAndAIReasonSectionView(
+                surveyType: .mid,
+                fatigueScore: $formState.fatigueScore,
+                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                fatigueReasonAI: $formState.fatigueReasonAI,
+                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
+
+            Divider()
+                .background(Config.Colors.line.opacity(0.5))
+
+            AIUsefulnessAndReasonSectionView(
+                surveyType: .mid,
+                usefulnessScore: $formState.usefulnessScore,
+                usefulnessReason: $formState.usefulnessReason,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
         }
     }
 
-    // MARK: - [end] 장면 03 콘텐츠
-    // 1. 피로 척도 (6점 이상 시 피로 후속 질문)
-    // 2. 유용성 척도 (4점 이상 시 유용성 후속 질문) - 오직 [end] AI 세션 종료 설문 전용
-    // 3. "이번 작업은 어땠나요?" 슬라이더 6개 (정신적 요구, 신체적 요구, 시간 압박, 성과 만족, 노력, 좌절감)
+    // MARK: - [end] 장면 03 종료 콘텐츠 (피로도, AI 피로도 & 이유, 그 외 이유, AI 유용성 & 이유, NASA-TLX)
     private var endSurveyContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // 1. 피로 척도
-            FatigueScaleView(score: $formState.fatigueScore)
-
-            // 피로 6점 이상일 때 후속 질문 (피로 질문 바로 밑, 절제된 부드러운 페이드 인)
-            if formState.isHighFatigue {
-                DeepFatigueSectionView(formState: formState)
-                    .transition(.opacity)
-            }
-
-            Divider()
-
-            // 2. 유용성 척도 (AI가 도움이 된다고 느끼는 정도 - [end] 전용)
-            UsefulnessScaleView(score: $formState.usefulnessScore)
-
-            // 유용성 4점 이상일 때 후속 질문 (유용성 질문 바로 밑, 절제된 부드러운 페이드 인)
-            if formState.isHighUsefulness {
-                UsefulnessHelpSectionView(formState: formState)
-                    .transition(.opacity)
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            FatigueAndAIReasonSectionView(
+                surveyType: .end,
+                fatigueScore: $formState.fatigueScore,
+                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                fatigueReasonAI: $formState.fatigueReasonAI,
+                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
 
             Divider()
+                .background(Config.Colors.line.opacity(0.5))
 
-            // 3. 이번 작업은 어땠나요? (NASA-TLX 슬라이더 6개)
+            AIUsefulnessAndReasonSectionView(
+                surveyType: .end,
+                usefulnessScore: $formState.usefulnessScore,
+                usefulnessReason: $formState.usefulnessReason,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
+
+            Divider()
+                .background(Config.Colors.line.opacity(0.5))
+
             TLXSliderSectionView(tlx: $formState.endTLX, onModified: {
                 formState.isTLXModified = true
             })
         }
     }
 
-    // MARK: - [diary / nudge] 다이어리 및 넛지용 콘텐츠
+    // MARK: - [diary / nudge] 다이어리 및 넛지용 콘텐츠 (사용 목적/캡처, AI·내 역할, 피로도, AI 피로도 & 이유, 그 외 이유)
     private var diaryOrNudgeContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // 1. 피로 척도
-            FatigueScaleView(score: $formState.fatigueScore)
+        VStack(alignment: .leading, spacing: 16) {
+            TaskRoleDivisionSectionView(
+                surveyType: .diary,
+                taskPurpose: $formState.taskPurpose,
+                aiRole: $formState.aiRole,
+                myRole: $formState.myRole,
+                capturedImagePath: $formState.capturedImagePath,
+                onRetakeAreaCapture: onRetakeAreaCapture,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
 
-            // 피로 6점 이상일 때 후속 질문 (피로 질문 바로 밑, 절제된 부드러운 페이드 인)
-            if formState.isHighFatigue {
-                DeepFatigueSectionView(formState: formState)
-                    .transition(.opacity)
-            }
+            Divider()
+                .background(Config.Colors.line.opacity(0.5))
+
+            FatigueAndAIReasonSectionView(
+                surveyType: .diary,
+                fatigueScore: $formState.fatigueScore,
+                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                fatigueReasonAI: $formState.fatigueReasonAI,
+                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
+        }
+    }
+
+    // MARK: - [followUp] 응답 30분 뒤 피로 영향 및 대처 점검 콘텐츠
+    private var followUpContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            FollowUp30MinSectionView(
+                fatigueImpactOnWork: $formState.fatigueImpactOnWork,
+                isNoImpactOnWork: $formState.isNoImpactOnWork,
+                copingStrategy: $formState.copingStrategy,
+                isNoCopingStrategy: $formState.isNoCopingStrategy,
+                improvementIdea: $formState.improvementIdea,
+                onFocusChanged: { isFocused in
+                    formState.isTextFieldFocused = isFocused
+                }
+            )
         }
     }
 
@@ -436,9 +491,7 @@ public struct SurveyPopupView: View {
         HStack(spacing: 8) {
             // 건너뛰기 버튼
             Button(action: {
-                stopCountdown()
-                SpeechInputManager.shared.stopRecording()
-                onAction(.skip, nil)
+                performAction(.skip, nil)
             }) {
                 Text("건너뛰기")
                     .font(.system(size: 12, weight: .medium))
@@ -452,25 +505,28 @@ public struct SurveyPopupView: View {
             .buttonStyle(.plain)
             .contentShape(Rectangle())
             .keyboardShortcut(.cancelAction)
+            .disabled(isActionProcessed)
 
-            // 10분 뒤에 버튼
+            // 5분 뒤에 버튼 (최대 2회)
             Button(action: {
-                stopCountdown()
-                onAction(.snooze, nil)
+                guard canSnooze else { return }
+                performAction(.snooze, nil)
             }) {
                 HStack(spacing: 3) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 10.5))
-                    Text("10분 뒤에")
+                    Text("5분 뒤에")
                         .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundColor(.orange)
+                .foregroundColor(canSnooze ? .orange : Config.Colors.mute.opacity(0.4))
                 .padding(.horizontal, 11)
                 .padding(.vertical, 7)
-                .background(Color.orange.opacity(0.12))
+                .background(canSnooze ? Color.orange.opacity(0.12) : Color.gray.opacity(0.08))
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
+            .disabled(!canSnooze || isActionProcessed)
+            .help(canSnooze ? "5분 뒤에 다시 알림 (최대 2회, 현재 \(snoozeCount)/\(Config.Scheduler.maxSnoozeCount))" : "스누즈 한도(최대 2회)에 도달했습니다")
 
             Spacer()
 
@@ -490,22 +546,44 @@ public struct SurveyPopupView: View {
 
             // 저장 버튼 (필수 문항 완료 시 활성화)
             Button(action: {
-                guard isFormValid else { return }
-                stopCountdown()
+                guard isFormValid, !isActionProcessed else { return }
                 let payload = formState.toResponsePayload(type: surveyType)
-                onAction(.response, payload)
+                performAction(.response, payload)
             }) {
-                Text("저장")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(isFormValid ? .white : Config.Colors.mute.opacity(0.8))
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 7)
-                    .background(isFormValid ? Color(hex: Config.Colors.accentHex) : Color.gray.opacity(0.18))
-                    .cornerRadius(6)
+                HStack(spacing: 4) {
+                    if isActionProcessed {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("저장됨")
+                    } else {
+                        Text("저장")
+                    }
+                }
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(isFormValid ? .white : Config.Colors.mute.opacity(0.8))
+                .padding(.horizontal, isActionProcessed ? 14 : 18)
+                .padding(.vertical, 7)
+                .background(
+                    isActionProcessed
+                        ? Color(hex: Config.Colors.accentHex)
+                        : (isFormValid ? Color(hex: Config.Colors.accentHex) : Color.gray.opacity(0.18))
+                )
+                .cornerRadius(6)
             }
             .buttonStyle(.plain)
-            .disabled(!isFormValid)
+            .disabled(!isFormValid || isActionProcessed)
         }
+    }
+
+    // MARK: - 중앙 액션 디스패치 (중복 클릭 및 다중 트리거 원천 방지)
+    private func performAction(_ action: SurveyAction, _ payload: [String: String]? = nil) {
+        guard !isActionProcessed else { return }
+        isActionProcessed = true
+        stopCountdown()
+        if speechManager.isRecording {
+            SpeechInputManager.shared.stopRecording()
+        }
+        onAction(action, payload)
     }
 
     // MARK: - 타이머 관리 (아무것도 입력하지 않는 동안에만 카운트다운 작동)
@@ -527,8 +605,7 @@ public struct SurveyPopupView: View {
             if remainingSeconds > 0 {
                 remainingSeconds -= 1
             } else {
-                stopCountdown()
-                onAction(.noResponse, nil)
+                performAction(.noResponse, nil)
             }
         }
     }

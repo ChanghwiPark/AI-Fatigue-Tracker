@@ -14,6 +14,18 @@ public final class DebugLogStore: ObservableObject {
     public func addEvent(_ event: ActivityEvent) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+
+            // 동일 시각(1초 이내), 동일 앱/소스, 동일 이벤트 유형 및 동일 상세 맥락의 중복 유입 차단
+            if let first = self.events.first,
+               first.appName == event.appName,
+               first.eventType == event.eventType,
+               first.windowTitle == event.windowTitle,
+               first.navType == event.navType,
+               abs(first.timestamp.timeIntervalSince(event.timestamp)) < 1.0 {
+                print("[DebugLogStore] 동일 이벤트 중복 수신 감지 -> 무시 (\(event.windowTitle))")
+                return
+            }
+
             self.events.insert(event, at: 0)
             if self.events.count > self.maxEvents {
                 self.events.removeLast()
@@ -46,6 +58,19 @@ public final class DebugLogStore: ObservableObject {
             for i in 0..<self.events.count {
                 if self.events[i].timestamp >= startDate && self.events[i].sessionId == nil {
                     self.events[i].sessionId = sessionId
+                }
+            }
+        }
+    }
+
+    /// 세션 제목 변경 시 해당 세션의 이전 open 이벤트의 제목도 함께 갱신
+    public func updateSessionOpenEventTitle(sessionId: UUID, newTitle: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            for i in 0..<self.events.count {
+                if self.events[i].sessionId == sessionId && self.events[i].eventType == .open {
+                    self.events[i].threadTitle = newTitle
+                    self.events[i].windowTitle = "새 대화 시작: \(newTitle)"
                 }
             }
         }

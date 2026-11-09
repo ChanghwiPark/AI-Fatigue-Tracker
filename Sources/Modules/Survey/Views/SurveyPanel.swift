@@ -19,6 +19,7 @@ public final class SurveyPanel: NSPanel {
         self.isMovable = true
         self.isMovableByWindowBackground = false
         self.isFloatingPanel = true
+        self.isReleasedWhenClosed = false
         // 상태바 레벨(statusWindow)로 설정하여 전체 화면 앱 위에도 항상 오버레이
         self.level = .statusBar
         // 모든 가상 데스크톱(Spaces) 및 전체 화면 보조 윈도우로 동작

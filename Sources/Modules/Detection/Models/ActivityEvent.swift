@@ -2,12 +2,13 @@ import Foundation
 
 /// 기록되는 모든 사용자 컴퓨터 활동 및 AI 세션 이벤트 모델
 public struct ActivityEvent: Identifiable, Codable {
-    /// 이벤트 그룹 체계 (생애주기, 집중, 전환, 입력·시스템)
+    /// 이벤트 그룹 체계 (생애주기, 집중, 전환, 입력·시스템, 설문)
     public enum EventGroup: String, Codable, CaseIterable, Identifiable {
         case lifecycle = "생애주기"
         case focus = "집중"
         case transition = "전환"
         case system = "입력·시스템"
+        case survey = "설문"
         public var id: String { rawValue }
         public var badgeLabel: String { rawValue }
     }
@@ -38,7 +39,7 @@ public struct ActivityEvent: Identifiable, Codable {
         public var id: String { rawValue }
     }
 
-    /// 4개 그룹 표준 이벤트 라벨
+    /// 5개 그룹 표준 이벤트 라벨
     public enum EventType: String, Codable, CaseIterable {
         // [1] 생애주기 (Lifecycle)
         case open = "open"                 // 앱 최초 실행, 새 창/탭 생성, 새 AI 대화 생성
@@ -57,6 +58,9 @@ public struct ActivityEvent: Identifiable, Codable {
         case suspend = "suspend"           // 화면 잠금, 절전
         case resume = "resume"             // 잠금 해제, 절전 해제
 
+        // [5] 설문 (Survey - 고유 그룹 및 라벨)
+        case survey = "survey"             // 설문 팝업 표시, 응답 완료, 건너뛰기, 5분 연기, 음소거 등
+
         /// 이벤트 그룹
         public var group: EventGroup {
             switch self {
@@ -68,10 +72,12 @@ public struct ActivityEvent: Identifiable, Codable {
                 return .transition
             case .idleStart, .idleEnd, .suspend, .resume:
                 return .system
+            case .survey:
+                return .survey
             }
         }
 
-        /// 표준 영문 코드 (open, navigate, close 등)
+        /// 표준 영문 코드 (open, navigate, close, survey 등)
         public var code: String { rawValue }
 
         /// 영문 라벨 (UI 표시용)
@@ -89,6 +95,7 @@ public struct ActivityEvent: Identifiable, Codable {
             case .resume: return "기상/복귀"
             case .focusIn: return "포커스 진입"
             case .focusOut: return "포커스 이탈"
+            case .survey: return "설문"
             }
         }
 
@@ -143,6 +150,8 @@ public struct ActivityEvent: Identifiable, Codable {
     public var toDomain: String?
     public var fromChatId: String?
     public var toChatId: String?
+    public var fromURL: String?
+    public var toURL: String?
 
     /// 시스템 대기/복귀 유형 (lock, sleep)
     public var suspendType: String?
@@ -197,6 +206,8 @@ public struct ActivityEvent: Identifiable, Codable {
         toDomain: String? = nil,
         fromChatId: String? = nil,
         toChatId: String? = nil,
+        fromURL: String? = nil,
+        toURL: String? = nil,
         suspendType: String? = nil,
         idleDuration: TimeInterval? = nil,
         suspendDuration: TimeInterval? = nil,
@@ -224,6 +235,8 @@ public struct ActivityEvent: Identifiable, Codable {
         self.toDomain = toDomain
         self.fromChatId = fromChatId
         self.toChatId = toChatId
+        self.fromURL = fromURL
+        self.toURL = toURL ?? url
         self.suspendType = suspendType
         self.idleDuration = idleDuration
         self.suspendDuration = suspendDuration

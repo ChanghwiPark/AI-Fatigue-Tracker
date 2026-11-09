@@ -58,6 +58,9 @@ public final class CustomAITargetManager: ObservableObject {
         if let slashIdx = trimmed.firstIndex(of: "/") {
             trimmed = String(trimmed[..<slashIdx])
         }
+        if let colonIdx = trimmed.firstIndex(of: ":") {
+            trimmed = String(trimmed[..<colonIdx])
+        }
         guard !trimmed.isEmpty else { return }
         guard !customDomains.contains(where: { $0.value == trimmed }) else { return }
 
@@ -105,6 +108,9 @@ public final class CustomAITargetManager: ObservableObject {
         if host.hasPrefix("http://") { host = String(host.dropFirst(7)) }
         if let slashIdx = host.firstIndex(of: "/") {
             host = String(host[..<slashIdx])
+        }
+        if let colonIdx = host.firstIndex(of: ":") {
+            host = String(host[..<colonIdx])
         }
 
         for target in customDomains {

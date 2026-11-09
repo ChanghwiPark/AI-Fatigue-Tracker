@@ -19,16 +19,24 @@ public final class OnboardingWindowManager: NSObject, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular)
         UserDefaults.standard.set("onboarding", forKey: "active_window_identifier")
 
-        if let existing = windowController, existing.window?.isVisible == true {
-            existing.window?.orderFrontRegardless()
-            existing.window?.makeKeyAndOrderFront(nil)
+        if let win = windowController?.window {
+            if win.isMiniaturized {
+                win.deminiaturize(nil)
+            }
+            win.orderFrontRegardless()
+            win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                win.orderFrontRegardless()
+                win.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
             return
         }
 
         let hostingView = NSHostingView(rootView: OnboardingView())
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 550, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 600),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -52,9 +60,16 @@ public final class OnboardingWindowManager: NSObject, NSWindowDelegate {
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     public func windowWillClose(_ notification: Notification) {
+        windowController = nil
         if UserDefaults.standard.string(forKey: "active_window_identifier") == "onboarding" {
             UserDefaults.standard.removeObject(forKey: "active_window_identifier")
         }

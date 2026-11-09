@@ -19,9 +19,12 @@ public struct AISession: Identifiable, Codable {
     public let sessionId: UUID
     public var threadKey: String       // 고유 식별키 (웹 URL 경로, 창 번호/제목, 터미널 PID 등)
     public var title: String           // 대화 제목 (예: "SwiftUI 레이아웃 연구", "새 대화")
+    public var originalTitle: String?  // 마스킹 전 실제 대화 원본 제목 (동일 대화 비교/매칭용)
     public let toolName: String        // "Claude", "ChatGPT", "Cursor", "Claude Code" 등
     public let appName: String         // "Google Chrome", "Claude", "Terminal" 등
-    public let url: String?            // 웹 대화인 경우 URL
+    public var url: String?            // 웹 대화인 경우 URL
+    public var windowId: Int?          // 데스크톱 앱 윈도우 고유 식별 번호 (CGWindowID)
+    public var hasFinalizedTitle: Bool? // AI 대화 제목이 최종 확정(AI 자동 요약 등)되었는지 여부
 
     public var state: SessionState
     public let openedAt: Date
@@ -42,9 +45,12 @@ public struct AISession: Identifiable, Codable {
         sessionId: UUID = UUID(),
         threadKey: String,
         title: String,
+        originalTitle: String? = nil,
         toolName: String,
         appName: String,
         url: String? = nil,
+        windowId: Int? = nil,
+        hasFinalizedTitle: Bool? = false,
         state: SessionState = .open,
         openedAt: Date = Date(),
         closedAt: Date? = nil,
@@ -57,9 +63,12 @@ public struct AISession: Identifiable, Codable {
         self.sessionId = sessionId
         self.threadKey = threadKey
         self.title = title
+        self.originalTitle = originalTitle ?? title
         self.toolName = toolName
         self.appName = appName
         self.url = url
+        self.windowId = windowId
+        self.hasFinalizedTitle = hasFinalizedTitle
         self.state = state
         self.openedAt = openedAt
         self.closedAt = closedAt

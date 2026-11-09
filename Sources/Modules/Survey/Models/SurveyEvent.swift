@@ -2,11 +2,12 @@ import Foundation
 
 /// 설문 팝업의 종류 (AI 세션 기준 및 사용자 트리거)
 public enum SurveyType: String, Codable, CaseIterable, Identifiable {
-    case start = "start"   // AI 세션 시작 직후
-    case mid = "mid"       // AI 세션이 이어지는 동안 60~120분 무작위 간격 반복
-    case end = "end"       // AI 세션 종료 직후
-    case diary = "diary"   // 사용자가 직접 열 때
-    case nudge = "nudge"   // 그날 자발적 기록 0건 시 18:30에 1회
+    case start = "start"         // AI 세션 시작 직후
+    case mid = "mid"             // AI 세션이 이어지는 동안 20~40분 무작위 간격 반복
+    case end = "end"             // AI 세션 종료 직후
+    case diary = "diary"         // 사용자가 직접 열 때
+    case nudge = "nudge"         // 그날 자발적 기록 0건 시 18:30에 1회
+    case followUp = "follow_up"  // 피로도(2~5점) 응답 30분 뒤 피로 영향 및 대처 점검
 
     public var id: String { rawValue }
 
@@ -17,6 +18,7 @@ public enum SurveyType: String, Codable, CaseIterable, Identifiable {
         case .end: return "AI 세션 종료 설문"
         case .diary: return "다이어리 기록"
         case .nudge: return "데일리 회고 넛지"
+        case .followUp: return "피로 영향 및 대처 점검"
         }
     }
 
@@ -27,6 +29,7 @@ public enum SurveyType: String, Codable, CaseIterable, Identifiable {
         case .end: return "종료 설문"
         case .diary: return "다이어리"
         case .nudge: return "미기록 넛지"
+        case .followUp: return "피로 영향 점검"
         }
     }
 
@@ -41,6 +44,7 @@ public enum SurveyType: String, Codable, CaseIterable, Identifiable {
         case .end: return "#10B981"     // 에메랄드 그린
         case .diary: return "#8B5CF6"   // 보라색
         case .nudge: return "#5D7A63"   // 세이지 그린
+        case .followUp: return "#E0522A" // 테라코타 오렌지
         }
     }
 }
@@ -49,7 +53,7 @@ public enum SurveyType: String, Codable, CaseIterable, Identifiable {
 public enum SurveyAction: String, Codable, CaseIterable, Identifiable {
     case response = "response"       // 설문 응답 완료
     case skip = "skip"               // 건너뛰기
-    case snooze = "snooze"           // 10분 뒤에 (미루기)
+    case snooze = "snooze"           // 5분 뒤에 (미루기)
     case noResponse = "no_response"  // 무응답 타임아웃 (자동 닫힘)
 
     public var id: String { rawValue }
@@ -58,7 +62,7 @@ public enum SurveyAction: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .response: return "응답"
         case .skip: return "건너뛰기"
-        case .snooze: return "10분 뒤(미루기)"
+        case .snooze: return "5분 뒤(미루기)"
         case .noResponse: return "무응답"
         }
     }

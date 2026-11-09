@@ -172,6 +172,19 @@ public enum Config {
                     : NSColor(hex: "#2E5838")
             }))
         }
+
+        // MARK: - 저피로(4점 이하) 추가 질문 영역 테마 토큰 (주황색 테마)
+        public static var lowFatigueBackground: Color {
+            highFatigueBackground
+        }
+
+        public static var lowFatigueBorder: Color {
+            highFatigueBorder
+        }
+
+        public static var lowFatigueTitle: Color {
+            highFatigueTitle
+        }
     }
 
     // MARK: - 세션 감지 파라미터 (Detection)
@@ -194,8 +207,11 @@ public enum Config {
         /// 브라우저 URL 저장 범위: "domain" (도메인만), "full" (쿼리 문자열을 뺀 전체 URL). 기본값: "full"
         public static let urlMode: String = "full"
 
-        /// 웹 AI(claude.ai 등) 사용을 정식 AI 세션으로 판정할지 여부 (기본 false. false여도 이벤트에는 is_ai = true 표시)
-        public static let countWebAIAsSession: Bool = false
+        /// 웹 AI(claude.ai 등) 사용을 정식 AI 세션으로 판정할지 여부 (기본 true)
+        public static var countWebAIAsSession: Bool {
+            get { ConfigManager.shared.countWebAIAsSession }
+            set { ConfigManager.shared.countWebAIAsSession = newValue }
+        }
 
         /// 감지 대상 AI 전용 데스크톱 앱 (Bundle ID -> 도구명)
         public static let aiDesktopApps: [String: String] = [
@@ -227,6 +243,8 @@ public enum Config {
             "xyz.chatboxapp.chatbox": "Chatbox",
             "ai.perplexity.mac": "Perplexity",
             "com.perplexity.Perplexity": "Perplexity",
+            "com.google.Gemini": "Gemini",
+            "com.google.gemini": "Gemini",
             "com.poe.Poe": "Poe"
         ]
 
@@ -252,8 +270,11 @@ public enum Config {
         public static let aiWebDomains: [String] = [
             "claude.ai",
             "chatgpt.com",
+            "chat.com",
             "chat.openai.com",
+            "openai.com",
             "gemini.google.com",
+            "aistudio.google.com",
             "perplexity.ai",
             "notebooklm.google.com",
             "copilot.microsoft.com",
@@ -296,7 +317,10 @@ public enum Config {
             "company.thebrowser.dia": "Dia",
             "sh.cortex.dia": "Dia",
             "com.electron.dia": "Dia",
-            "com.naver.whale": "Whale"
+            "com.naver.whale": "Whale",
+            "ru.yandex.desktop.yandex-browser": "Yandex",
+"com.pushplaylabs.sidekick": "Sidekick",
+"ai.perplexity.comet": "Comet"
         ]
 
         /// 프라이버시 보호를 위해 활동 로깅에서 완전히 제외할 앱 번들 ID
@@ -304,7 +328,9 @@ public enum Config {
             "com.agilebits.onepassword",
             "com.apple.keychainaccess",
             "com.apple.Preferences",
-            "com.apple.systempreferences"
+            "com.apple.systempreferences",
+            "com.kakao.KakaoTalkMac",
+            "com.kakao.KakaoTalk"
         ]
     }
 
@@ -328,11 +354,14 @@ public enum Config {
             set { ConfigManager.shared.minPopupCooldown = newValue }
         }
 
-        /// "10분 뒤에" 버튼 클릭 시 스누즈 대기 시간
+        /// "5분 뒤에" 버튼 클릭 시 스누즈 대기 시간 (표준: 5분 = 300초)
         public static var snoozeDuration: TimeInterval {
             get { ConfigManager.shared.snoozeDuration }
             set { ConfigManager.shared.snoozeDuration = newValue }
         }
+
+        /// 스누즈 최대 허용 횟수 (표준: 최대 2회)
+        public static let maxSnoozeCount: Int = 2
 
         /// 팝업 무응답 시 자동으로 닫히는 시간
         public static var autoDismissDuration: TimeInterval {
@@ -349,7 +378,13 @@ public enum Config {
         /// 메뉴 막대 "15분 동안 기록 멈추기" 지속 시간 (15분 = 900초)
         public static let recordingPauseDuration: TimeInterval = 15 * 60
 
-        /// 당일 자발적 기록이 0건일 때 데일리 넛지(07) 발송 시각
+        /// 당일 미기록 넛지(07) 발송 활성화 여부 (디폴트: false - 꺼짐)
+        public static var isDailyNudgeEnabled: Bool {
+            get { ConfigManager.shared.isDailyNudgeEnabled }
+            set { ConfigManager.shared.isDailyNudgeEnabled = newValue }
+        }
+
+        /// 당일 설문(start, mid, end) 및 자발적 기록(diary)이 0건일 때 데일리 넛지(07) 발송 시각
         public static var dailyNudgeHour: Int {
             get { ConfigManager.shared.dailyNudgeHour }
             set { ConfigManager.shared.dailyNudgeHour = newValue }
@@ -383,6 +418,8 @@ public enum Config {
         public static let popupMidWidth: CGFloat = 340.0
         /// 넛지/토스트 가로 폭 (pt)
         public static let popupToastWidth: CGFloat = 340.0
+        /// 메뉴 막대 드롭다운 패널 기본 가로 폭 (pt) - 상단 상태 문구가 잘림 없이 여유 있게 들어가도록 설정
+        public static let menuBarDefaultWidth: CGFloat = 412.0
     }
 
     // MARK: - 백엔드 (Supabase) 연동 설정
