@@ -72,16 +72,29 @@ public struct SurveySectionCard<Content: View>: View {
 }
 
 // MARK: - 1. 공통 헤더 컴포넌트
-/// 설문 창 최상단 헤더: 아이콘 배지와 16.5pt 강조 타이포그래피, AI 도구명 시각적 하이라이트로 내부 문항과 확실히 구분
+/// 설문 창 최상단 헤더: 아이콘 배지와 16.5pt 강조 타이포그래피, AI 도구명 시각적 하이라이트, 우측 단계 인디케이터 배지
 public struct SurveyHeaderView: View {
     public let title: String
     public let toolName: String?
     public let surveyType: SurveyType?
+    public let currentStep: Int?
+    public let totalSteps: Int?
+    public let stepTitle: String?
 
-    public init(title: String, toolName: String? = nil, surveyType: SurveyType? = nil) {
+    public init(
+        title: String,
+        toolName: String? = nil,
+        surveyType: SurveyType? = nil,
+        currentStep: Int? = nil,
+        totalSteps: Int? = nil,
+        stepTitle: String? = nil
+    ) {
         self.title = title
         self.toolName = toolName
         self.surveyType = surveyType
+        self.currentStep = currentStep
+        self.totalSteps = totalSteps
+        self.stepTitle = stepTitle
     }
 
     private var headerIcon: String {
@@ -120,6 +133,31 @@ public struct SurveyHeaderView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
+
+            // 우측 상단 단계 인디케이터 캡슐 배지 (페이징 시 몇 단계인지 명확히 노출)
+            if let cur = currentStep, let tot = totalSteps, tot > 1 {
+                HStack(spacing: 4) {
+                    Text("\(cur)/\(tot)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(hex: Config.Colors.accentHex))
+
+                    if let st = stepTitle, !st.isEmpty {
+                        Text(st)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundColor(Config.Colors.ink)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(
+                    Capsule()
+                        .fill(Color(hex: Config.Colors.accentHex).opacity(0.1))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color(hex: Config.Colors.accentHex).opacity(0.25), lineWidth: 0.8)
+                        )
+                )
+            }
         }
         .contentShape(Rectangle())
         .overlay(WindowDragArea())

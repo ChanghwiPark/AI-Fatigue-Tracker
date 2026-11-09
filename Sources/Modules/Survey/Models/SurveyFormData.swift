@@ -472,6 +472,67 @@ public final class SurveyFormState: ObservableObject {
         }
     }
 
+    /// 페이징(Wizard) 단계별 필수 문항 완료 여부 검증 (다음 버튼 활성화 기준)
+    public func isStepValid(for type: SurveyType, step: Int) -> Bool {
+        switch type {
+        case .start:
+            if step == 1 {
+                // Step 1: 사용 목적, AI가 하는 일, 내가 하는 일 (필수 ●)
+                let hasPurpose = !taskPurpose.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || taskPurpose.isNoSpecificPurpose
+                let hasAIRole = !aiRole.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let hasMyRole = !myRole.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                return hasPurpose && hasAIRole && hasMyRole
+            } else {
+                // Step 2: 피로도 (5점 척도 필수 ●)
+                return fatigueScore != nil
+            }
+
+        case .mid:
+            if step == 1 {
+                // Step 1: 사용 목적(또는 캡처), AI가 하는 일, 내가 하는 일 (필수 ●)
+                let hasPurpose = !taskPurpose.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let hasCapture = (capturedImagePath != nil && !capturedImagePath!.isEmpty)
+                let hasAIRole = !aiRole.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let hasMyRole = !myRole.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                return (hasPurpose || hasCapture) && hasAIRole && hasMyRole
+            } else if step == 2 {
+                // Step 2: 피로도 및 AI 피로도 (5점 척도 필수 ●)
+                return fatigueScore != nil && aiFatigueImpactScore != nil
+            } else {
+                // Step 3: AI 유용성 (5점 척도 필수 ●)
+                return usefulnessScore != nil
+            }
+
+        case .end:
+            if step == 1 {
+                // Step 1: 피로도 및 AI 피로도 (5점 척도 필수 ●)
+                return fatigueScore != nil && aiFatigueImpactScore != nil
+            } else if step == 2 {
+                // Step 2: AI 유용성 (5점 척도 필수 ●)
+                return usefulnessScore != nil
+            } else {
+                // Step 3: NASA-TLX 6문항 슬라이더 조작 (필수 ●)
+                return isTLXModified
+            }
+
+        case .diary:
+            if step == 1 {
+                // Step 1: 사용 목적(또는 캡처), AI가 하는 일, 내가 하는 일 (필수 ●)
+                let hasPurpose = !taskPurpose.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let hasCapture = (capturedImagePath != nil && !capturedImagePath!.isEmpty)
+                let hasAIRole = !aiRole.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let hasMyRole = !myRole.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                return (hasPurpose || hasCapture) && hasAIRole && hasMyRole
+            } else {
+                // Step 2: 피로도 및 AI 피로도 (5점 척도 필수 ●)
+                return fatigueScore != nil && aiFatigueImpactScore != nil
+            }
+
+        case .followUp, .nudge:
+            return isFormValid(for: type)
+        }
+    }
+
     // MARK: - 카테고리 토글 액션 (하위 호환)
     public func toggleFatigueCategory(id: String) {
         if selectedFatigueCategories.contains(id) {

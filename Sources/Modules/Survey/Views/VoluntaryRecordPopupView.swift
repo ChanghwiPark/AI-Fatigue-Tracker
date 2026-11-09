@@ -21,12 +21,23 @@ public struct VoluntaryRecordPopupView: View {
     @StateObject private var formState: SurveyFormState = SurveyFormState()
     @State private var innerContentHeight: CGFloat = 360.0
     @State private var isActionProcessed: Bool = false
+    @State private var currentStep: Int = 1 // 페이징(Wizard) 현재 단계
     @ObservedObject private var speechManager = SpeechInputManager.shared
 
     private let cardWidth: CGFloat = Config.Survey.popupDefaultWidth // 372px
+    private let totalSteps: Int = 2
+
+    private var currentStepTitle: String {
+        currentStep == 1 ? "작업 맥락" : "피로도 평가"
+    }
+
+    private var isCurrentStepValid: Bool {
+        formState.isStepValid(for: .diary, step: currentStep)
+    }
 
     public init(
         context: VoluntaryCaptureContext,
+        initialStep: Int = 1,
         initialSituation: String? = nil,
         initialFatigue: Int? = nil,
         initialAIFatigueImpact: Int? = nil,
@@ -49,6 +60,7 @@ public struct VoluntaryRecordPopupView: View {
         self.onRetakeAreaCapture = onRetakeAreaCapture
         self.onCancel = onCancel
         self.onSave = onSave
+        self._currentStep = State(initialValue: initialStep)
 
         let isTestHigh = CommandLine.arguments.contains("--test-diary-popup-high-fatigue") || CommandLine.arguments.contains("--test-high-fatigue")
         let initF = initialFatigue ?? (isTestHigh ? 4 : nil)
@@ -92,53 +104,58 @@ public struct VoluntaryRecordPopupView: View {
             Divider()
                 .background(Config.Colors.line)
 
-            // 2. 본문 영역
+            // 2. 본문 영역 (단계별 단일 카드 뷰 - 화면 초과 시에만 내부 스크롤)
             ScrollView(.vertical, showsIndicators: isOverflowing) {
                 VStack(alignment: .leading, spacing: 14) {
-                    // 문항 1. 작업 목적 및 역할 분담 (사용 목적/캡처, AI가 하는 일, 내가 하는 일)
-                    SurveySectionCard(
-                        badgeNumber: "01",
-                        title: "작업 맥락 & 역할 분담",
-                        isRequired: true
-                    ) {
-                        TaskRoleDivisionSectionView(
-                            surveyType: .diary,
-                            taskPurpose: $formState.taskPurpose,
-                            aiRole: $formState.aiRole,
-                            myRole: $formState.myRole,
-                            capturedImagePath: Binding(
-                                get: { formState.capturedImagePath ?? context.localImagePath },
-                                set: { newPath in
-                                    formState.capturedImagePath = newPath
-                                    context.localImagePath = newPath
+                    if currentStep == 1 {
+                        // 문항 1. 작업 목적 및 역할 분담 (사용 목적/캡처, AI가 하는 일, 내가 하는 일)
+                        SurveySectionCard(
+                            badgeNumber: "01",
+                            title: "작업 맥락 & 역할 분담",
+                            isRequired: true
+                        ) {
+                            TaskRoleDivisionSectionView(
+                                surveyType: .diary,
+                                taskPurpose: $formState.taskPurpose,
+                                aiRole: $formState.aiRole,
+                                myRole: $formState.myRole,
+                                capturedImagePath: Binding(
+                                    get: { formState.capturedImagePath ?? context.localImagePath },
+                                    set: { newPath in
+                                        formState.capturedImagePath = newPath
+                                        context.localImagePath = newPath
+                                    }
+                                ),
+                                onRetakeAreaCapture: onRetakeAreaCapture,
+                                onFocusChanged: { isFocused in
+                                    formState.isTextFieldFocused = isFocused
                                 }
-                            ),
-                            onRetakeAreaCapture: onRetakeAreaCapture,
-                            onFocusChanged: { isFocused in
-                                formState.isTextFieldFocused = isFocused
-                            }
-                        )
-                    }
-
-                    // 문항 2. 피로도, AI 피로도 & 이유, 그 외 이유
-                    SurveySectionCard(
-                        badgeNumber: "02",
-                        title: "피로도 평가",
-                        isRequired: true
-                    ) {
-                        FatigueAndAIReasonSectionView(
-                            surveyType: .diary,
-                            fatigueScore: $formState.fatigueScore,
-                            aiFatigueImpactScore: $formState.aiFatigueImpactScore,
-                            fatigueReasonAI: $formState.fatigueReasonAI,
-                            fatigueReasonNonAI: $formState.fatigueReasonNonAI,
-                            onFocusChanged: { isFocused in
-                                formState.isTextFieldFocused = isFocused
-                            }
-                        )
+                            )
+                        }
+                        .transition(.opacity)
+                    } else {
+                        // 문항 2. 피로도, AI 피로도 & 이유, 그 외 이유
+                        SurveySectionCard(
+                            badgeNumber: "02",
+                            title: "피로도 평가",
+                            isRequired: true
+                        ) {
+                            FatigueAndAIReasonSectionView(
+                                surveyType: .diary,
+                                fatigueScore: $formState.fatigueScore,
+                                aiFatigueImpactScore: $formState.aiFatigueImpactScore,
+                                fatigueReasonAI: $formState.fatigueReasonAI,
+                                fatigueReasonNonAI: $formState.fatigueReasonNonAI,
+                                onFocusChanged: { isFocused in
+                                    formState.isTextFieldFocused = isFocused
+                                }
+                            )
+                        }
+                        .transition(.opacity)
                     }
                 }
                 .padding(16)
+                .animation(.easeInOut(duration: 0.22), value: currentStep)
                 .background(
                     GeometryReader { geo in
                         Color.clear.preference(key: SurveyContentHeightPreferenceKey.self, value: geo.size.height)
@@ -187,7 +204,7 @@ public struct VoluntaryRecordPopupView: View {
         }
     }
 
-    // MARK: - 1. 헤더 뷰 (드래그하여 창 이동 가능 - 다른 설문 팝업과 통일된 단일 타이틀 형태)
+    // MARK: - 1. 헤더 뷰 (드래그하여 창 이동 가능 - 우측 상단 단계 인디케이터 배지 포함)
     private var headerView: some View {
         HStack(alignment: .center, spacing: 10) {
             ZStack {
@@ -207,16 +224,37 @@ public struct VoluntaryRecordPopupView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
+
+            // 우측 상단 단계 인디케이터 배지
+            HStack(spacing: 4) {
+                Text("\(currentStep)/\(totalSteps)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(Color(hex: Config.Colors.accentHex))
+
+                Text(currentStepTitle)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(Config.Colors.ink)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
+            .background(
+                Capsule()
+                    .fill(Color(hex: Config.Colors.accentHex).opacity(0.1))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color(hex: Config.Colors.accentHex).opacity(0.25), lineWidth: 0.8)
+                    )
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .overlay(WindowDragArea())
     }
 
-    // MARK: - 3. 하단 액션 버튼 바 (취소, 저장)
+    // MARK: - 3. 하단 액션 버튼 바 (방안 1: 취소 좌측 고정, 우측 [이전][다음/저장] 페어링)
     private var footerActionSection: some View {
         HStack(spacing: 10) {
-            // 취소 버튼
+            // 취소 버튼 (좌측 구석 고정)
             Button(action: {
                 guard !isActionProcessed else { return }
                 isActionProcessed = true
@@ -229,7 +267,7 @@ public struct VoluntaryRecordPopupView: View {
                 Text("취소")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Config.Colors.mute)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 7)
                     .background(Color.gray.opacity(0.12))
                     .cornerRadius(6)
@@ -242,36 +280,90 @@ public struct VoluntaryRecordPopupView: View {
 
             Spacer()
 
-            // 저장 버튼 (피로도 척도 선택 시 활성화)
+            // [방안 1] 우측 네비게이션 페어링: [이전] [다음 ➔] 또는 [✓ 저장]
+            // 이전 버튼 (1단계에서는 비활성화하여 오클릭 방지)
             Button(action: {
-                guard isFormValid, !isActionProcessed else { return }
-                isActionProcessed = true
-                saveAction()
-            }) {
-                HStack(spacing: 4) {
-                    if isActionProcessed {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("저장됨")
-                    } else {
-                        Text("저장")
-                    }
+                guard currentStep > 1, !isActionProcessed else { return }
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    currentStep -= 1
                 }
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(isFormValid ? .white : Config.Colors.mute.opacity(0.8))
-                .padding(.horizontal, isActionProcessed ? 16 : 20)
+            }) {
+                HStack(spacing: 3) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 10.5, weight: .semibold))
+                    Text("이전")
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(currentStep > 1 ? Config.Colors.ink : Config.Colors.mute.opacity(0.4))
+                .padding(.horizontal, 11)
                 .padding(.vertical, 7)
-                .background(
-                    isActionProcessed
-                        ? Color(hex: Config.Colors.accentHex)
-                        : (isFormValid ? Color(hex: Config.Colors.accentHex) : Color.gray.opacity(0.18))
-                )
+                .background(currentStep > 1 ? Color.gray.opacity(0.12) : Color.gray.opacity(0.06))
                 .cornerRadius(6)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .disabled(!isFormValid || isActionProcessed)
+            .disabled(currentStep <= 1 || isActionProcessed)
+
+            // 다음 또는 저장 버튼
+            if currentStep < totalSteps {
+                // [다음 ➔] 버튼 (1단계 필수 문항 충족 시 활성화)
+                Button(action: {
+                    guard isCurrentStepValid, !isActionProcessed else { return }
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        currentStep += 1
+                    }
+                }) {
+                    HStack(spacing: 3) {
+                        Text("다음")
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10.5, weight: .semibold))
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(isCurrentStepValid ? .white : Config.Colors.mute.opacity(0.8))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        isCurrentStepValid ? Color(hex: Config.Colors.accentHex) : Color.gray.opacity(0.18)
+                    )
+                    .cornerRadius(6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .disabled(!isCurrentStepValid || isActionProcessed)
+            } else {
+                // 저장 버튼 (피로도 척도 선택 시 활성화)
+                Button(action: {
+                    guard isFormValid, !isActionProcessed else { return }
+                    isActionProcessed = true
+                    saveAction()
+                }) {
+                    HStack(spacing: 4) {
+                        if isActionProcessed {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("저장됨")
+                        } else {
+                            Text("저장")
+                        }
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(isFormValid ? .white : Config.Colors.mute.opacity(0.8))
+                    .padding(.horizontal, isActionProcessed ? 14 : 18)
+                    .padding(.vertical, 7)
+                    .background(
+                        isActionProcessed
+                            ? Color(hex: Config.Colors.accentHex)
+                            : (isFormValid ? Color(hex: Config.Colors.accentHex) : Color.gray.opacity(0.18))
+                    )
+                    .cornerRadius(6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .disabled(!isFormValid || isActionProcessed)
+            }
         }
     }
 

@@ -1784,13 +1784,22 @@ public enum ThemePreviewRenderer {
             path: "\(artifactDir)/desktop_menubar_dropdown_light.png"
         )
 
-        // 5-4. 세션 종료 설문(.end) 팝업(피로도 + 유용성 + NASA-TLX 슬라이더)이 우상단에 뜬 전체 데스크탑 화면 (라이트 모드)
+        // 5-4. 세션 종료 설문(.end) 팝업(Step 1: 피로도 평가)이 우상단에 뜬 전체 데스크탑 화면 (라이트 모드)
         renderView(
             DesktopFullMockupView(sceneType: .endSurvey),
             width: 1440,
             height: 900,
             appearance: .aqua,
             path: "\(artifactDir)/desktop_survey_end_light.png"
+        )
+
+        // 5-4-b. 세션 종료 설문(.end) 팝업(Step 3: NASA-TLX 슬라이더)이 우상단에 뜬 전체 데스크탑 화면 (라이트 모드)
+        renderView(
+            DesktopFullMockupView(sceneType: .endSurveyTLX),
+            width: 1440,
+            height: 900,
+            appearance: .aqua,
+            path: "\(artifactDir)/desktop_survey_end_tlx_light.png"
         )
 
         // 5-5. 자발적 기록 설문(.diary) 팝업이 우상단에 뜬 전체 데스크탑 화면 (라이트 모드)
@@ -1848,6 +1857,7 @@ public enum DesktopSceneType {
     case midSurvey
     case startSurvey
     case endSurvey
+    case endSurveyTLX
     case diarySurvey
     case menuBarDropdown
     case followUpSurvey
@@ -2117,6 +2127,24 @@ public struct DesktopFullMockupView: View {
                         initialFatigue: nil,
                         initialAIFatigueImpact: nil,
                         initialUsefulness: nil,
+                        maxContentHeight: 1200,
+                        onHeightChanged: { _ in },
+                        onAction: { _, _ in }
+                    )
+                    .frame(width: Config.Survey.popupDefaultWidth)
+
+                case .endSurveyTLX:
+                    // 3단계: 작업 부하 및 수행 평가 (NASA-TLX)
+                    SurveyPopupView(
+                        surveyType: .end,
+                        sessionTitle: "AI 피로도 연구 분석",
+                        aiTool: "ChatGPT",
+                        snoozeCount: 0,
+                        initialStep: 3,
+                        initialSituation: nil,
+                        initialFatigue: 4,
+                        initialAIFatigueImpact: 3,
+                        initialUsefulness: 4,
                         maxContentHeight: 1200,
                         onHeightChanged: { _ in },
                         onAction: { _, _ in }
