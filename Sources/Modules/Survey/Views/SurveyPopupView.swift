@@ -170,7 +170,7 @@ public struct SurveyPopupView: View {
             switch currentStep {
             case 1: return "피로도 평가"
             case 2: return "유용성 평가"
-            default: return "작업 부하 평가"
+            default: return "작업 부하 및 수행 평가"
             }
         case .diary:
             return currentStep == 1 ? "작업 맥락" : "피로도 평가"
@@ -397,11 +397,7 @@ public struct SurveyPopupView: View {
     @ViewBuilder
     private var startSurveyContent: some View {
         if currentStep == 1 {
-            SurveySectionCard(
-                badgeNumber: "01",
-                title: "작업 맥락 & 역할 분담",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 TaskRoleDivisionSectionView(
                     surveyType: .start,
                     taskPurpose: $formState.taskPurpose,
@@ -416,11 +412,7 @@ public struct SurveyPopupView: View {
             }
             .transition(.opacity)
         } else {
-            SurveySectionCard(
-                badgeNumber: "02",
-                title: "피로도 점검",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 FatigueAndAIReasonSectionView(
                     surveyType: .start,
                     fatigueScore: $formState.fatigueScore,
@@ -441,11 +433,7 @@ public struct SurveyPopupView: View {
     private var midSurveyContent: some View {
         switch currentStep {
         case 1:
-            SurveySectionCard(
-                badgeNumber: "01",
-                title: "작업 맥락 & 역할 분담",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 TaskRoleDivisionSectionView(
                     surveyType: .mid,
                     taskPurpose: $formState.taskPurpose,
@@ -460,11 +448,7 @@ public struct SurveyPopupView: View {
             }
             .transition(.opacity)
         case 2:
-            SurveySectionCard(
-                badgeNumber: "02",
-                title: "피로도 평가",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 FatigueAndAIReasonSectionView(
                     surveyType: .mid,
                     fatigueScore: $formState.fatigueScore,
@@ -478,11 +462,7 @@ public struct SurveyPopupView: View {
             }
             .transition(.opacity)
         default:
-            SurveySectionCard(
-                badgeNumber: "03",
-                title: "AI 유용성 평가",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 AIUsefulnessAndReasonSectionView(
                     surveyType: .mid,
                     usefulnessScore: $formState.usefulnessScore,
@@ -501,11 +481,7 @@ public struct SurveyPopupView: View {
     private var endSurveyContent: some View {
         switch currentStep {
         case 1:
-            SurveySectionCard(
-                badgeNumber: "01",
-                title: "피로도 평가",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 FatigueAndAIReasonSectionView(
                     surveyType: .end,
                     fatigueScore: $formState.fatigueScore,
@@ -519,11 +495,7 @@ public struct SurveyPopupView: View {
             }
             .transition(.opacity)
         case 2:
-            SurveySectionCard(
-                badgeNumber: "02",
-                title: "AI 유용성 평가",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 AIUsefulnessAndReasonSectionView(
                     surveyType: .end,
                     usefulnessScore: $formState.usefulnessScore,
@@ -535,11 +507,7 @@ public struct SurveyPopupView: View {
             }
             .transition(.opacity)
         default:
-            SurveySectionCard(
-                badgeNumber: "03",
-                title: "작업 부하 및 수행 평가 (NASA-TLX)",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 TLXSliderSectionView(tlx: $formState.endTLX, onModified: {
                     formState.isTLXModified = true
                 })
@@ -552,11 +520,7 @@ public struct SurveyPopupView: View {
     @ViewBuilder
     private var diaryOrNudgeContent: some View {
         if currentStep == 1 {
-            SurveySectionCard(
-                badgeNumber: "01",
-                title: "작업 맥락 & 역할 분담",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 TaskRoleDivisionSectionView(
                     surveyType: .diary,
                     taskPurpose: $formState.taskPurpose,
@@ -571,11 +535,7 @@ public struct SurveyPopupView: View {
             }
             .transition(.opacity)
         } else {
-            SurveySectionCard(
-                badgeNumber: "02",
-                title: "피로도 평가",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 FatigueAndAIReasonSectionView(
                     surveyType: .diary,
                     fatigueScore: $formState.fatigueScore,
@@ -594,11 +554,7 @@ public struct SurveyPopupView: View {
     // MARK: - [followUp] 응답 30분 뒤 피로 영향 및 대처 점검 콘텐츠
     private var followUpContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SurveySectionCard(
-                badgeNumber: "01",
-                title: "피로의 영향 및 대처 점검",
-                isRequired: true
-            ) {
+            SurveySectionCard {
                 FollowUp30MinSectionView(
                     fatigueImpactOnWork: $formState.fatigueImpactOnWork,
                     isNoImpactOnWork: $formState.isNoImpactOnWork,
@@ -613,7 +569,7 @@ public struct SurveyPopupView: View {
         }
     }
 
-    // MARK: - 3. 하단 액션 바 (방안 1: 건너뛰기 좌측 고정, 우측 [이전][다음/완료] 페어링)
+    // MARK: - 3. 하단 액션 바 (방안 1: 건너뛰기 좌측 고정, 5분뒤에 width 고정, 우측 [이전][다음/완료] 페어링)
     private var footerActionSection: some View {
         HStack(spacing: 8) {
             // 건너뛰기 버튼 (좌측 구석 영구 고정)
@@ -624,7 +580,8 @@ public struct SurveyPopupView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Config.Colors.mute)
                     .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
+                    .frame(height: 28)
+                    .fixedSize(horizontal: true, vertical: false)
                     .background(Color.gray.opacity(0.12))
                     .cornerRadius(6)
                     .contentShape(Rectangle())
@@ -634,7 +591,7 @@ public struct SurveyPopupView: View {
             .keyboardShortcut(.cancelAction)
             .disabled(isActionProcessed)
 
-            // 5분 뒤에 버튼 (최대 2회, 클릭 시 현재 입력 상태 및 단계 임시 저장)
+            // 5분 뒤에 버튼 (최대 2회, 클릭 시 현재 입력 상태 및 단계 임시 저장, 너비 84pt 고정)
             Button(action: {
                 guard canSnooze, !isActionProcessed else { return }
                 // 1. 현재 작성 중이던 모든 폼 상태와 단계(currentStep) 임시 저장
@@ -648,15 +605,14 @@ public struct SurveyPopupView: View {
                 payload["draft_step"] = "\(currentStep)"
                 performAction(.snooze, payload)
             }) {
-                HStack(spacing: 3) {
+                HStack(spacing: 3.5) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 10.5))
                     Text("5분 뒤에")
                         .font(.system(size: 12, weight: .medium))
                 }
                 .foregroundColor(canSnooze ? .orange : Config.Colors.mute.opacity(0.4))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .frame(width: 84, height: 28)
                 .background(canSnooze ? Color.orange.opacity(0.12) : Color.gray.opacity(0.08))
                 .cornerRadius(6)
             }
@@ -675,7 +631,9 @@ public struct SurveyPopupView: View {
                     Text(formattedCountdown)
                         .font(.system(size: 11.5, weight: .medium, design: .monospaced))
                         .foregroundColor(remainingSeconds <= 20 ? .red : Config.Colors.mute)
+                        .lineLimit(1)
                 }
+                .fixedSize(horizontal: true, vertical: false)
                 .padding(.trailing, 2)
                 .transition(.opacity)
             }
@@ -697,7 +655,8 @@ public struct SurveyPopupView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(currentStep > 1 ? Config.Colors.ink : Config.Colors.mute.opacity(0.4))
                     .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
+                    .frame(height: 28)
+                    .fixedSize(horizontal: true, vertical: false)
                     .background(currentStep > 1 ? Color.gray.opacity(0.12) : Color.gray.opacity(0.06))
                     .cornerRadius(6)
                     .contentShape(Rectangle())
@@ -716,7 +675,7 @@ public struct SurveyPopupView: View {
                         currentStep += 1
                     }
                 }) {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 3.5) {
                         Text("다음")
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10.5, weight: .semibold))
@@ -724,7 +683,8 @@ public struct SurveyPopupView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(isCurrentStepValid ? .white : Config.Colors.mute.opacity(0.8))
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
+                    .frame(height: 28)
+                    .fixedSize(horizontal: true, vertical: false)
                     .background(
                         isCurrentStepValid ? Color(hex: Config.Colors.accentHex) : Color.gray.opacity(0.18)
                     )
@@ -753,7 +713,8 @@ public struct SurveyPopupView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(isFormValid ? .white : Config.Colors.mute.opacity(0.8))
                     .padding(.horizontal, isActionProcessed ? 14 : 16)
-                    .padding(.vertical, 7)
+                    .frame(height: 28)
+                    .fixedSize(horizontal: true, vertical: false)
                     .background(
                         isActionProcessed
                             ? Color(hex: Config.Colors.accentHex)

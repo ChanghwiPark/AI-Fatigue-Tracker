@@ -3,16 +3,17 @@ import Speech
 import AVFoundation
 
 // MARK: - 0. 공통 섹션 카드 컨테이너 (비주얼 하이어라키 & 그룹핑)
-/// 설문 문항들을 테마별(01 작업 맥락, 02 피로도 평가 등)로 시각적 그룹핑하여 인지 부하를 줄이고 계층 구조를 명확히 하는 카드 컨테이너
+/// 설문 문항들을 테마별로 시각적 그룹핑하여 인지 부하를 줄이고 계층 구조를 명확히 하는 카드 컨테이너
+/// - 상단 우측에 단계/제목 인디케이터([1/3 작업 맥락])가 들어가므로, 카드 자체는 중복 제목/번호 없이 본문 콘텐츠만 깔끔하게 노출
 public struct SurveySectionCard<Content: View>: View {
-    public let badgeNumber: String
-    public let title: String
+    public let badgeNumber: String?
+    public let title: String?
     public let isRequired: Bool
     public let content: Content
 
     public init(
-        badgeNumber: String,
-        title: String,
+        badgeNumber: String? = nil,
+        title: String? = nil,
         isRequired: Bool = true,
         @ViewBuilder content: () -> Content
     ) {
@@ -23,36 +24,37 @@ public struct SurveySectionCard<Content: View>: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // 카드 헤더 (넘버 배지 + 타이틀 + 필수/선택 칩)
-            HStack(alignment: .center, spacing: 8) {
-                // 넘버 배지
-                Text(badgeNumber)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(Color(hex: Config.Colors.accentHex))
-                    .frame(width: 20, height: 20)
-                    .background(
-                        Circle()
-                            .fill(Color(hex: Config.Colors.accentHex).opacity(0.12))
-                    )
+        VStack(alignment: .leading, spacing: (title != nil && !title!.isEmpty) ? 12 : 0) {
+            // 카드 헤더 (명시적으로 타이틀이 지정된 경우에만 노출, 기본은 헤더 생략)
+            if let t = title, !t.isEmpty {
+                HStack(alignment: .center, spacing: 8) {
+                    if let b = badgeNumber, !b.isEmpty {
+                        Text(b)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(Color(hex: Config.Colors.accentHex))
+                            .frame(width: 20, height: 20)
+                            .background(
+                                Circle()
+                                    .fill(Color(hex: Config.Colors.accentHex).opacity(0.12))
+                            )
+                    }
 
-                // 섹션 제목
-                Text(title)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Config.Colors.ink)
+                    Text(t)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Config.Colors.ink)
 
-                Spacer()
+                    Spacer()
 
-                // 필수 / 선택 배지
-                Text(isRequired ? "필수" : "선택")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(isRequired ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2.5)
-                    .background(
-                        Capsule()
-                            .fill(isRequired ? Color(hex: Config.Colors.accentHex).opacity(0.12) : Color.gray.opacity(0.12))
-                    )
+                    Text(isRequired ? "필수" : "선택")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(isRequired ? Color(hex: Config.Colors.accentHex) : Config.Colors.mute)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(
+                            Capsule()
+                                .fill(isRequired ? Color(hex: Config.Colors.accentHex).opacity(0.12) : Color.gray.opacity(0.12))
+                        )
+                }
             }
 
             // 본문 콘텐츠
@@ -1480,10 +1482,16 @@ public struct TLXSliderSectionView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("지금까지의 작업을 돌아보며 평가해 주세요.")
-                .font(.system(size: 12.5, weight: .bold))
-                .foregroundColor(Config.Colors.ink)
-                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("지금까지의 작업을 돌아보며 평가해 주세요.")
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundColor(Config.Colors.ink)
+
+                Text("[100점 척도: NASA-TLX]")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(Config.Colors.mute)
+            }
+            .padding(.top, 2)
 
             VStack(spacing: 12) {
                 tlxSliderRow(

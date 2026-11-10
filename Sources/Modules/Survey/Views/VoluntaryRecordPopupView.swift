@@ -109,11 +109,7 @@ public struct VoluntaryRecordPopupView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     if currentStep == 1 {
                         // 문항 1. 작업 목적 및 역할 분담 (사용 목적/캡처, AI가 하는 일, 내가 하는 일)
-                        SurveySectionCard(
-                            badgeNumber: "01",
-                            title: "작업 맥락 & 역할 분담",
-                            isRequired: true
-                        ) {
+                        SurveySectionCard {
                             TaskRoleDivisionSectionView(
                                 surveyType: .diary,
                                 taskPurpose: $formState.taskPurpose,
@@ -135,11 +131,7 @@ public struct VoluntaryRecordPopupView: View {
                         .transition(.opacity)
                     } else {
                         // 문항 2. 피로도, AI 피로도 & 이유, 그 외 이유
-                        SurveySectionCard(
-                            badgeNumber: "02",
-                            title: "피로도 평가",
-                            isRequired: true
-                        ) {
+                        SurveySectionCard {
                             FatigueAndAIReasonSectionView(
                                 surveyType: .diary,
                                 fatigueScore: $formState.fatigueScore,
@@ -268,7 +260,8 @@ public struct VoluntaryRecordPopupView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Config.Colors.mute)
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
+                    .frame(height: 28)
+                    .fixedSize(horizontal: true, vertical: false)
                     .background(Color.gray.opacity(0.12))
                     .cornerRadius(6)
                     .contentShape(Rectangle())
@@ -296,7 +289,8 @@ public struct VoluntaryRecordPopupView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(currentStep > 1 ? Config.Colors.ink : Config.Colors.mute.opacity(0.4))
                 .padding(.horizontal, 11)
-                .padding(.vertical, 7)
+                .frame(height: 28)
+                .fixedSize(horizontal: true, vertical: false)
                 .background(currentStep > 1 ? Color.gray.opacity(0.12) : Color.gray.opacity(0.06))
                 .cornerRadius(6)
                 .contentShape(Rectangle())
@@ -314,7 +308,7 @@ public struct VoluntaryRecordPopupView: View {
                         currentStep += 1
                     }
                 }) {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 3.5) {
                         Text("다음")
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10.5, weight: .semibold))
@@ -322,7 +316,8 @@ public struct VoluntaryRecordPopupView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(isCurrentStepValid ? .white : Config.Colors.mute.opacity(0.8))
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
+                    .frame(height: 28)
+                    .fixedSize(horizontal: true, vertical: false)
                     .background(
                         isCurrentStepValid ? Color(hex: Config.Colors.accentHex) : Color.gray.opacity(0.18)
                     )
@@ -351,7 +346,8 @@ public struct VoluntaryRecordPopupView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(isFormValid ? .white : Config.Colors.mute.opacity(0.8))
                     .padding(.horizontal, isActionProcessed ? 14 : 18)
-                    .padding(.vertical, 7)
+                    .frame(height: 28)
+                    .fixedSize(horizontal: true, vertical: false)
                     .background(
                         isActionProcessed
                             ? Color(hex: Config.Colors.accentHex)
